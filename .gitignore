@@ -1,0 +1,30 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# ===== 虚拟环境 =====
+venv/
+env/
+.venv/
+
+# ===== 密钥 / 敏感信息(绝不上传公开仓库)=====
+.env
+*.key
+*.token
+secrets.*
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== 大数据文件(体积大,README 注明从 Kaggle 下载即可)=====
+# 如需保留小数据样例可注释掉对应行
+data/raw/*.csv
+*.zip
+
+# ===== 分析/检验脚本(本次不公开)=====
+src/_*.py

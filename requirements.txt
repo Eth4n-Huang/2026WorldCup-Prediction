@@ -1,0 +1,8 @@
+# 2026WorldCup-Prediction 依赖
+# 安装: pip install -r requirements.txt
+
+pandas>=1.5
+numpy>=1.23
+scipy>=1.9
+scikit-learn>=1.2
+xgboost>=1.7
