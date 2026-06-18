@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2026WC-Prediction</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f172a;--card:#1e293b;--border:#2d3f52;--txt:#e2e8f0;--muted:#64748b;--dim:#94a3b8;
+  --blue:#38bdf8;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--purple:#c084fc;--orange:#fb923c}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+
+/* ── 顶栏 ── */
+.topbar{background:var(--card);border-bottom:1px solid var(--border);
+  padding:.6rem 1.25rem;display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
+.topbar h1{font-size:.95rem;font-weight:700;color:var(--blue);white-space:nowrap}
+.pills{display:flex;flex-wrap:wrap;gap:.4rem;flex:1}
+.pill{background:#0f172a;border:1px solid var(--border);border-radius:999px;
+  padding:.2rem .65rem;font-size:.78rem;white-space:nowrap}
+.pill span{font-weight:700}
+.pill.good span{color:var(--green)}.pill.warn span{color:var(--yellow)}
+.pill.info span{color:var(--blue)}.pill.muted span{color:var(--dim)}
+.gentime{font-size:.72rem;color:var(--muted);white-space:nowrap}
+
+/* ── 标签页导航 ── */
+.tabnav{background:var(--card);border-bottom:1px solid var(--border);
+  display:flex;padding:0 1.25rem;gap:0}
+.tabbtn{background:none;border:none;border-bottom:2px solid transparent;
+  padding:.55rem 1.1rem;color:var(--muted);cursor:pointer;font-size:.83rem;font-weight:600;
+  white-space:nowrap;transition:color .15s}
+.tabbtn:hover{color:var(--txt)}
+.tabbtn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tabpage{display:none}.tabpage.active{display:block}
+
+/* ── 卡片 ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;overflow:hidden}
+.card-title{font-size:.78rem;font-weight:600;color:var(--dim);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.badge{background:var(--border);border-radius:4px;padding:.1rem .4rem;font-size:.7rem;color:var(--txt)}
+.footnote{color:var(--muted);font-size:.72rem;margin-top:.5rem;line-height:1.5}
+.empty{text-align:center;padding:1.5rem;color:var(--muted);font-size:.88rem}
+
+/* ── 预测看板网格 ── */
+.main{padding:1rem;display:grid;gap:1rem;
+  grid-template-columns:1fr 1fr;
+  grid-template-areas:"pred pred" "chart perf" "champ champ"}
+@media(max-width:860px){.main{grid-template-columns:1fr;
+  grid-template-areas:"pred" "chart" "perf" "champ"}}
+.area-pred{grid-area:pred}.area-chart{grid-area:chart}
+.area-perf{grid-area:perf}.area-champ{grid-area:champ}
+
+/* ── 预测表 ── */
+.ptbl{width:100%;border-collapse:collapse}
+.ptbl th{text-align:left;padding:.38rem .5rem;color:var(--muted);font-size:.73rem;font-weight:600;border-bottom:1px solid var(--border)}
+.ptbl td{padding:.42rem .5rem;border-bottom:1px solid #1a2a3a;vertical-align:middle}
+.ptbl tr:last-child td{border-bottom:none}
+.team-cell{font-weight:500}.vs{color:var(--muted);font-size:.78rem;margin:0 .2rem}
+.date-cell{color:var(--dim);font-size:.76rem;white-space:nowrap}
+.conf-badge{display:inline-block;font-size:.63rem;padding:.1rem .3rem;border-radius:3px;
+  background:#fbbf2420;color:var(--yellow);border:1px solid #fbbf2440;vertical-align:middle;margin-left:.25rem}
+.prob-bar{display:flex;height:20px;border-radius:3px;overflow:hidden;min-width:130px;gap:1px}
+.pb-h{background:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:.67rem;font-weight:600;color:#bfdbfe;min-width:20px}
+.pb-d{background:#44403c;display:flex;align-items:center;justify-content:center;font-size:.67rem;font-weight:600;color:#d6d3d1;min-width:20px}
+.pb-a{background:#7f1d1d;display:flex;align-items:center;justify-content:center;font-size:.67rem;font-weight:600;color:#fca5a5;min-width:20px}
+.pred-badge{display:inline-block;font-size:.73rem;font-weight:700;padding:.12rem .38rem;border-radius:4px;text-align:center;min-width:26px}
+.pred-H{background:#1e3a5f;color:var(--blue)}.pred-D{background:#2d2926;color:#d6d3d1}.pred-A{background:#3b1515;color:var(--red)}
+
+/* ── 折线图 ── */
+.chart-wrap{position:relative;height:210px}
+.chart-sub{position:relative;height:140px;margin-top:.75rem}
+.chart-legend{display:flex;flex-wrap:wrap;gap:.4rem .9rem;margin-bottom:.5rem}
+.legend-item{display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--dim)}
+.legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.legend-dash{width:16px;height:2px;border-top:2px dashed;flex-shrink:0}
+
+/* ── 战绩对比 ── */
+.score-bar{display:inline-block;height:4px;border-radius:2px;vertical-align:middle;margin-right:.3rem}
+.model-label{font-weight:600;font-size:.78rem}
+.acc-val{font-weight:700;font-size:.88rem}
+.settled-scroll{max-height:260px;overflow-y:auto}
+.settled-scroll::-webkit-scrollbar{width:4px}
+.settled-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.stbl{width:100%;border-collapse:collapse}
+.stbl th{text-align:left;padding:.32rem .4rem;color:var(--muted);font-size:.7rem;font-weight:600;border-bottom:1px solid var(--border)}
+.stbl td{padding:.32rem .4rem;border-bottom:1px solid #1a2a3a;font-size:.8rem}
+.stbl tr:last-child td{border-bottom:none}
+.ok{color:var(--green);font-weight:700}.ng{color:var(--red)}
+
+/* ── 夺冠概率 ── */
+.champ-list{display:flex;flex-direction:column;gap:.35rem}
+.champ-row{display:flex;align-items:center;gap:.5rem}
+.champ-name{width:130px;text-align:right;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.champ-bar-wrap{flex:1;background:#1a2a3a;border-radius:4px;height:20px;overflow:hidden}
+.champ-bar{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));
+  border-radius:4px;display:flex;align-items:center;justify-content:flex-end;
+  padding-right:.35rem;font-size:.7rem;font-weight:700;color:#fff;min-width:26px}
+
+/* ══ 积分榜页 ══ */
+.stand-page{padding:1rem;display:flex;flex-direction:column;gap:1rem}
+.best3-card{max-width:100%}
+.b3tbl{width:100%;border-collapse:collapse}
+.b3tbl th{padding:.32rem .55rem;text-align:left;color:var(--muted);font-size:.72rem;font-weight:600;border-bottom:1px solid var(--border)}
+.b3tbl td{padding:.32rem .55rem;border-bottom:1px solid #1a2a3a;font-size:.8rem}
+.b3tbl tr:last-child td{border-bottom:none}
+.adv-yes{color:var(--green);font-weight:700}.adv-no{color:var(--muted)}
+
+.grp-grid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.grp-card .card-title{font-size:.85rem;color:var(--txt);letter-spacing:0;text-transform:none;font-weight:700}
+.grp-tbl{width:100%;border-collapse:collapse}
+.grp-tbl th{padding:.28rem .4rem;text-align:right;color:var(--muted);font-size:.7rem;font-weight:600;border-bottom:1px solid var(--border)}
+.grp-tbl th:nth-child(2){text-align:left}
+.grp-tbl td{padding:.3rem .4rem;border-bottom:1px solid #151f2d;font-size:.8rem;text-align:right}
+.grp-tbl td:nth-child(2){text-align:left;font-weight:500}
+.grp-tbl tr:last-child td{border-bottom:none}
+/* 出线状态行色 */
+.r1 td,.r2 td{} /* 仅左侧排名着色 */
+.r1 td:first-child,.r2 td:first-child{color:var(--green);font-weight:700}
+.r3 td:first-child{color:var(--yellow);font-weight:600}
+.r4 td{color:var(--muted)}
+/* 行背景渐变 */
+.r1{background:rgba(74,222,128,.06)}
+.r2{background:rgba(74,222,128,.04)}
+.r3{background:rgba(251,191,36,.04)}
+.grp-tbl tr.r1:hover,.grp-tbl tr.r2:hover,.grp-tbl tr.r3:hover,.grp-tbl tr.r4:hover{background:#253040}
+.out-zone-label{font-size:.65rem;color:var(--green);margin-left:.3rem;vertical-align:middle}
+.b3-zone-label{font-size:.65rem;color:var(--yellow);margin-left:.3rem;vertical-align:middle}
+
+/* ══ 赛程页 ══ */
+.sched-page{padding:1rem;max-width:1020px;margin:0 auto}
+.sched-notice{background:#1c2a40;border:1px solid #2d4a6a;border-radius:8px;
+  padding:.55rem 1rem;color:var(--blue);font-size:.8rem;margin-bottom:1rem;line-height:1.6}
+.sched-day{margin-bottom:1.4rem}
+.sched-day-header{font-size:.83rem;font-weight:700;color:var(--dim);padding:.4rem 0 .35rem;
+  border-bottom:1px solid var(--border);margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem}
+.sched-day-header .day-badge{background:#1a2a3a;border-radius:4px;padding:.1rem .45rem;
+  font-size:.7rem;color:var(--muted)}
+.sched-match{display:grid;grid-template-columns:54px 1fr auto;align-items:center;
+  gap:.35rem .6rem;padding:.5rem .65rem;
+  border-radius:7px;margin-bottom:.22rem;background:var(--card);border:1px solid var(--border)}
+.sched-match:hover{border-color:#3a5068;background:#1a2535}
+.sched-match.focus-match{border-color:#fbbf2480;border-left:3px solid #fbbf24}
+.sched-match.ko-match{border-color:#818cf840}
+.sched-time-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.sched-bj{font-size:.88rem;font-weight:700;color:var(--txt)}
+.sched-utc{font-size:.65rem;color:var(--muted);margin-top:1px}
+.sched-main{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .4rem;min-width:0}
+.sched-meta{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;width:100%}
+.sched-stage-badge{font-size:.65rem;padding:.1rem .35rem;border-radius:3px;
+  background:#1a2a3a;color:var(--dim);white-space:nowrap}
+.sched-grp-badge{font-size:.65rem;padding:.1rem .3rem;border-radius:3px;
+  background:#0f172a;color:var(--blue);border:1px solid #1e3a5f;white-space:nowrap;font-weight:700}
+.sched-focus-tag{font-size:.65rem;color:var(--yellow);white-space:nowrap}
+.sched-teams-row{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;width:100%}
+.sched-home,.sched-away{font-weight:500;font-size:.88rem}
+.sched-score{font-weight:700;color:var(--txt);background:#0f172a;padding:.15rem .55rem;
+  border-radius:4px;font-size:.92rem;white-space:nowrap;letter-spacing:.03em}
+.sched-vs{color:var(--muted);font-size:.75rem}
+.sched-pending{color:var(--muted);font-size:.75rem;font-style:italic}
+.sched-venue-txt{font-size:.68rem;color:var(--muted);width:100%}
+.sched-right{display:flex;flex-direction:column;align-items:flex-end;gap:.22rem;flex-shrink:0}
+.sched-pred-row{display:flex;align-items:center;gap:.25rem}
+.sched-pred-lbl{font-size:.67rem;color:var(--dim)}
+.winner-h{border-left:3px solid var(--green)}
+.winner-a{border-left:3px solid var(--green)}
+.winner-h .sched-home{color:var(--green)}
+.winner-a .sched-away{color:var(--green)}
+.ko-home,.ko-away{color:var(--muted);font-style:italic;font-size:.82rem}
+
+/* ══ 窄屏适配（仅手机，不影响桌面端任何样式）══ */
+@media(max-width:600px){
+  /* 关键：窄屏下解除卡片的overflow:hidden，否则内部无法横向滚动 */
+  .card{overflow:visible}
+  /* 问题1：预测看板——让表格本身在一个可滚动的包裹层里 */
+  #upcoming-body{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #upcoming-body .ptbl{min-width:520px}
+  #upcoming-body .team-cell{white-space:nowrap}
+  #upcoming-body .date-cell{white-space:nowrap}
+  /* 问题2：最佳第三名表——同理 */
+  #best3-body{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #best3-body .b3tbl{min-width:560px}
+  #best3-body .b3tbl th,
+  #best3-body .b3tbl td{white-space:nowrap}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>⚽ 2026WC-Prediction</h1>
+  <div class="pills" id="pills"></div>
+  <div class="gentime" id="gentime"></div>
+</div>
+<nav class="tabnav">
+  <button class="tabbtn active" data-tab="dash">⚽ 预测看板</button>
+  <button class="tabbtn" data-tab="stand">📊 积分榜</button>
+  <button class="tabbtn" data-tab="sched">📅 赛程</button>
+</nav>
+
+<!-- ══ 页面1: 预测看板 ══ -->
+<section id="pg-dash" class="tabpage active">
+<div class="main">
+  <div class="card area-pred">
+    <div class="card-title">待赛预测 <span class="badge" id="upcoming-count">—</span>
+      <span style="margin-left:auto;font-size:.7rem;color:var(--muted)">H &nbsp;D &nbsp;A 概率</span></div>
+    <div id="upcoming-body"></div>
+    <p class="footnote">金框 = DC置信度 &gt;60%</p>
+  </div>
+  <div class="card area-chart">
+    <div class="card-title">滚动战绩曲线 <span class="badge" id="chart-n">—</span></div>
+    <div class="chart-legend" id="chart-legend"></div>
+    <div class="chart-wrap"><canvas id="chartAcc"></canvas></div>
+    <div class="chart-sub"><canvas id="chartBrier"></canvas></div>
+    <p class="footnote" id="chart-note"></p>
+  </div>
+  <div class="card area-perf">
+    <div class="card-title">模型表现对比 <span class="badge" id="perf-n">—</span></div>
+    <div id="perf-body"></div>
+    <div class="settled-scroll" style="margin-top:.75rem">
+      <table class="stbl"><thead><tr>
+        <th>日期</th><th>对阵</th><th>结果</th><th>DC</th><th>XGB</th><th>Adj</th><th>BLa</th><th>DC概率</th>
+      </tr></thead><tbody id="settled-tbody"></tbody></table>
+    </div>
+  </div>
+  <div class="card area-champ">
+    <div class="card-title">夺冠/晋级概率 <span class="badge">蒙特卡洛</span></div>
+    <div id="champ-body"></div>
+  </div>
+</div>
+</section>
+
+<!-- ══ 页面2: 积分榜 ══ -->
+<section id="pg-stand" class="tabpage">
+<div class="stand-page">
+  <div class="card best3-card">
+    <div class="card-title">
+      最佳第三名实时排名
+      <span class="badge">12组第3名 → 前8名晋级 32强</span>
+
+    </div>
+    <div id="best3-body"></div>
+  </div>
+  <div class="grp-grid" id="grp-grid"></div>
+  <p class="footnote" style="padding:0 .25rem">
+    绿色 = 直接出线区（前2名）；黄色 = 最佳第三名争夺区；灰色 = 目前已被淘汰区。
+    积分相同时按净胜球 / 进球数排序（不含头对头等FIFA完整规则）。仅统计已结算比赛。
+  </p>
+</div>
+</section>
+
+<!-- ══ 页面3: 赛程 ══ -->
+<section id="pg-sched" class="tabpage">
+<div class="sched-page">
+  <div id="sched-body"></div>
+</div>
+</section>
+
+<script>
+const DATA = {"upcoming": [{"date": "2026-06-19", "home": "捷克", "away": "南非", "bj_time": "00:00", "ph": 0.501, "pd": 0.285, "pa": 0.213, "dc_pred": "H", "xgb_pred": "D", "high_conf": false}, {"date": "2026-06-19", "home": "墨西哥", "away": "韩国", "bj_time": "09:00", "ph": 0.503, "pd": 0.272, "pa": 0.226, "dc_pred": "H", "xgb_pred": "H", "high_conf": false}, {"date": "2026-06-19", "home": "瑞士", "away": "波黑", "bj_time": "03:00", "ph": 0.677, "pd": 0.211, "pa": 0.112, "dc_pred": "H", "xgb_pred": "H", "high_conf": true}, {"date": "2026-06-19", "home": "加拿大", "away": "卡塔尔", "bj_time": "06:00", "ph": 0.75, "pd": 0.167, "pa": 0.083, "dc_pred": "H", "xgb_pred": "H", "high_conf": true}], "settled": [{"date": "2026-06-13", "home": "加拿大", "away": "波黑", "bj_time": "03:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.595, "pd": 0.254, "pa": 0.152}, {"date": "2026-06-13", "home": "美国", "away": "巴拉圭", "bj_time": "09:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 0, "bla_correct": 0, "ph": 0.368, "pd": 0.298, "pa": 0.333}, {"date": "2026-06-14", "home": "澳大利亚", "away": "土耳其", "bj_time": "12:00", "actual": "H", "dc_pred": "A", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.34, "pd": 0.291, "pa": 0.369}, {"date": "2026-06-14", "home": "巴西", "away": "摩洛哥", "bj_time": "06:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 1, "bla_correct": 0, "ph": 0.403, "pd": 0.333, "pa": 0.264}, {"date": "2026-06-14", "home": "海地", "away": "苏格兰", "bj_time": "09:00", "actual": "A", "dc_pred": "A", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 0, "bla_correct": 1, "ph": 0.12, "pd": 0.195, "pa": 0.685}, {"date": "2026-06-14", "home": "卡塔尔", "away": "瑞士", "bj_time": "03:00", "actual": "D", "dc_pred": "A", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.054, "pd": 0.122, "pa": 0.824}, {"date": "2026-06-15", "home": "德国", "away": "库拉索", "bj_time": "01:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 1, "ph": 0.941, "pd": 0.046, "pa": 0.013}, {"date": "2026-06-15", "home": "科特迪瓦", "away": "厄瓜多尔", "bj_time": "07:00", "actual": "H", "dc_pred": "A", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.21, "pd": 0.374, "pa": 0.416}, {"date": "2026-06-15", "home": "荷兰", "away": "日本", "bj_time": "04:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.398, "pd": 0.292, "pa": 0.31}, {"date": "2026-06-15", "home": "瑞典", "away": "突尼斯", "bj_time": "10:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.426, "pd": 0.294, "pa": 0.28}, {"date": "2026-06-16", "home": "西班牙", "away": "佛得角", "bj_time": "00:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.872, "pd": 0.099, "pa": 0.029}, {"date": "2026-06-16", "home": "沙特阿拉伯", "away": "乌拉圭", "bj_time": "06:00", "actual": "D", "dc_pred": "A", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.108, "pd": 0.28, "pa": 0.611}, {"date": "2026-06-16", "home": "比利时", "away": "埃及", "bj_time": "03:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.551, "pd": 0.279, "pa": 0.169}, {"date": "2026-06-16", "home": "伊朗", "away": "新西兰", "bj_time": "09:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.607, "pd": 0.267, "pa": 0.126}, {"date": "2026-06-17", "home": "奥地利", "away": "约旦", "bj_time": "12:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 0, "ph": 0.668, "pd": 0.211, "pa": 0.121}, {"date": "2026-06-17", "home": "阿根廷", "away": "阿尔及利亚", "bj_time": "09:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 1, "ph": 0.62, "pd": 0.259, "pa": 0.121}, {"date": "2026-06-17", "home": "法国", "away": "塞内加尔", "bj_time": "03:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 1, "ph": 0.509, "pd": 0.282, "pa": 0.208}, {"date": "2026-06-17", "home": "伊拉克", "away": "挪威", "bj_time": "06:00", "actual": "A", "dc_pred": "A", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 1, "ph": 0.101, "pd": 0.218, "pa": 0.681}, {"date": "2026-06-18", "home": "英格兰", "away": "克罗地亚", "bj_time": "04:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 0, "bla_correct": 1, "ph": 0.494, "pd": 0.299, "pa": 0.207}, {"date": "2026-06-18", "home": "葡萄牙", "away": "民主刚果", "bj_time": "01:00", "actual": "D", "dc_pred": "H", "dc_correct": 0, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.643, "pd": 0.249, "pa": 0.108}, {"date": "2026-06-18", "home": "乌兹别克斯坦", "away": "哥伦比亚", "bj_time": "10:00", "actual": "A", "dc_pred": "A", "dc_correct": 1, "xgb_correct": 1, "adj_correct": 1, "bla_correct": 1, "ph": 0.112, "pd": 0.238, "pa": 0.65}, {"date": "2026-06-18", "home": "加纳", "away": "巴拿马", "bj_time": "07:00", "actual": "H", "dc_pred": "H", "dc_correct": 1, "xgb_correct": 0, "adj_correct": 0, "bla_correct": 0, "ph": 0.378, "pd": 0.298, "pa": 0.324}], "running": [{"n": 1, "label": "#1", "dc_acc": 0.0, "xgb_acc": 0.0, "adj_acc": 0.0, "bla_acc": 0.0, "dc_brier": 0.9335, "dc_correct_this": 0, "actual": "D", "match": "加拿大 vs 波黑"}, {"n": 2, "label": "#2", "dc_acc": 0.5, "xgb_acc": 0.5, "adj_acc": 0.0, "bla_acc": 0.0, "dc_brier": 0.7663, "dc_correct_this": 1, "actual": "H", "match": "美国 vs 巴拉圭"}, {"n": 3, "label": "#3", "dc_acc": 0.3333, "xgb_acc": 0.3333, "adj_acc": 0.0, "bla_acc": 0.0, "dc_brier": 0.73, "dc_correct_this": 0, "actual": "H", "match": "澳大利亚 vs 土耳其"}, {"n": 4, "label": "#4", "dc_acc": 0.25, "xgb_acc": 0.25, "adj_acc": 0.25, "bla_acc": 0.0, "dc_brier": 0.7167, "dc_correct_this": 0, "actual": "D", "match": "巴西 vs 摩洛哥"}, {"n": 5, "label": "#5", "dc_acc": 0.4, "xgb_acc": 0.4, "adj_acc": 0.2, "bla_acc": 0.2, "dc_brier": 0.6037, "dc_correct_this": 1, "actual": "A", "match": "海地 vs 苏格兰"}, {"n": 6, "label": "#6", "dc_acc": 0.3333, "xgb_acc": 0.3333, "adj_acc": 0.1667, "bla_acc": 0.1667, "dc_brier": 0.745, "dc_correct_this": 0, "actual": "D", "match": "卡塔尔 vs 瑞士"}, {"n": 7, "label": "#7", "dc_acc": 0.4286, "xgb_acc": 0.4286, "adj_acc": 0.2857, "bla_acc": 0.2857, "dc_brier": 0.6394, "dc_correct_this": 1, "actual": "H", "match": "德国 vs 库拉索"}, {"n": 8, "label": "#8", "dc_acc": 0.375, "xgb_acc": 0.375, "adj_acc": 0.25, "bla_acc": 0.25, "dc_brier": 0.6766, "dc_correct_this": 0, "actual": "H", "match": "科特迪瓦 vs 厄瓜多尔"}, {"n": 9, "label": "#9", "dc_acc": 0.3333, "xgb_acc": 0.3333, "adj_acc": 0.2222, "bla_acc": 0.2222, "dc_brier": 0.6854, "dc_correct_this": 0, "actual": "D", "match": "荷兰 vs 日本"}, {"n": 10, "label": "#10", "dc_acc": 0.4, "xgb_acc": 0.3, "adj_acc": 0.2, "bla_acc": 0.2, "dc_brier": 0.6664, "dc_correct_this": 1, "actual": "H", "match": "瑞典 vs 突尼斯"}, {"n": 11, "label": "#11", "dc_acc": 0.3636, "xgb_acc": 0.2727, "adj_acc": 0.1818, "bla_acc": 0.1818, "dc_brier": 0.7488, "dc_correct_this": 0, "actual": "D", "match": "西班牙 vs 佛得角"}, {"n": 12, "label": "#12", "dc_acc": 0.3333, "xgb_acc": 0.25, "adj_acc": 0.1667, "bla_acc": 0.1667, "dc_brier": 0.7617, "dc_correct_this": 0, "actual": "D", "match": "沙特阿拉伯 vs 乌拉圭"}, {"n": 13, "label": "#13", "dc_acc": 0.3077, "xgb_acc": 0.2308, "adj_acc": 0.1538, "bla_acc": 0.1538, "dc_brier": 0.7686, "dc_correct_this": 0, "actual": "D", "match": "比利时 vs 埃及"}, {"n": 14, "label": "#14", "dc_acc": 0.2857, "xgb_acc": 0.2143, "adj_acc": 0.1429, "bla_acc": 0.1429, "dc_brier": 0.7795, "dc_correct_this": 0, "actual": "D", "match": "伊朗 vs 新西兰"}, {"n": 15, "label": "#15", "dc_acc": 0.3333, "xgb_acc": 0.2667, "adj_acc": 0.2, "bla_acc": 0.1333, "dc_brier": 0.7389, "dc_correct_this": 1, "actual": "H", "match": "奥地利 vs 约旦"}, {"n": 16, "label": "#16", "dc_acc": 0.375, "xgb_acc": 0.3125, "adj_acc": 0.25, "bla_acc": 0.1875, "dc_brier": 0.7068, "dc_correct_this": 1, "actual": "H", "match": "阿根廷 vs 阿尔及利亚"}, {"n": 17, "label": "#17", "dc_acc": 0.4118, "xgb_acc": 0.3529, "adj_acc": 0.2941, "bla_acc": 0.2353, "dc_brier": 0.6867, "dc_correct_this": 1, "actual": "H", "match": "法国 vs 塞内加尔"}, {"n": 18, "label": "#18", "dc_acc": 0.4444, "xgb_acc": 0.3889, "adj_acc": 0.3333, "bla_acc": 0.2778, "dc_brier": 0.6574, "dc_correct_this": 1, "actual": "A", "match": "伊拉克 vs 挪威"}, {"n": 19, "label": "#19", "dc_acc": 0.4737, "xgb_acc": 0.4211, "adj_acc": 0.3158, "bla_acc": 0.3158, "dc_brier": 0.6432, "dc_correct_this": 1, "actual": "H", "match": "英格兰 vs 克罗地亚"}, {"n": 20, "label": "#20", "dc_acc": 0.45, "xgb_acc": 0.4, "adj_acc": 0.3, "bla_acc": 0.3, "dc_brier": 0.6605, "dc_correct_this": 0, "actual": "D", "match": "葡萄牙 vs 民主刚果"}, {"n": 21, "label": "#21", "dc_acc": 0.4762, "xgb_acc": 0.4286, "adj_acc": 0.3333, "bla_acc": 0.3333, "dc_brier": 0.6381, "dc_correct_this": 1, "actual": "A", "match": "乌兹别克斯坦 vs 哥伦比亚"}, {"n": 22, "label": "#22", "dc_acc": 0.5, "xgb_acc": 0.4091, "adj_acc": 0.3182, "bla_acc": 0.3182, "dc_brier": 0.6355, "dc_correct_this": 1, "actual": "H", "match": "加纳 vs 巴拿马"}], "bt_acc": 0.5521, "bt_brier": 0.5794, "mc": null, "summary": {"n_settled": 22, "n_upcoming": 4, "dc_acc": 0.5, "xgb_acc": 0.4091, "adj_acc": 0.3182, "bla_acc": 0.3182, "dc_brier": 0.6355, "draw_rate": 0.4091, "gen_time": "2026-06-18"}, "standings": {"A": [{"team": "墨西哥", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 2, "ga": 0, "gd": 2, "pts": 3}, {"team": "韩国", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 2, "ga": 1, "gd": 1, "pts": 3}, {"team": "捷克", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 2, "gd": -1, "pts": 0}, {"team": "南非", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 2, "gd": -2, "pts": 0}], "B": [{"team": "加拿大", "rank": 1, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "波黑", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "卡塔尔", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "瑞士", "rank": 4, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}], "C": [{"team": "苏格兰", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 1, "ga": 0, "gd": 1, "pts": 3}, {"team": "巴西", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "摩洛哥", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "海地", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 1, "gd": -1, "pts": 0}], "D": [{"team": "美国", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 4, "ga": 1, "gd": 3, "pts": 3}, {"team": "澳大利亚", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 2, "ga": 0, "gd": 2, "pts": 3}, {"team": "土耳其", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 2, "gd": -2, "pts": 0}, {"team": "巴拉圭", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 4, "gd": -3, "pts": 0}], "E": [{"team": "德国", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 7, "ga": 1, "gd": 6, "pts": 3}, {"team": "科特迪瓦", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 1, "ga": 0, "gd": 1, "pts": 3}, {"team": "厄瓜多尔", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 1, "gd": -1, "pts": 0}, {"team": "库拉索", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 7, "gd": -6, "pts": 0}], "F": [{"team": "瑞典", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 5, "ga": 1, "gd": 4, "pts": 3}, {"team": "荷兰", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 2, "ga": 2, "gd": 0, "pts": 1}, {"team": "日本", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 2, "ga": 2, "gd": 0, "pts": 1}, {"team": "突尼斯", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 5, "gd": -4, "pts": 0}], "G": [{"team": "伊朗", "rank": 1, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 2, "ga": 2, "gd": 0, "pts": 1}, {"team": "新西兰", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 2, "ga": 2, "gd": 0, "pts": 1}, {"team": "比利时", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "埃及", "rank": 4, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}], "H": [{"team": "沙特阿拉伯", "rank": 1, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "乌拉圭", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "西班牙", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 0, "ga": 0, "gd": 0, "pts": 1}, {"team": "佛得角", "rank": 4, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 0, "ga": 0, "gd": 0, "pts": 1}], "I": [{"team": "挪威", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 4, "ga": 1, "gd": 3, "pts": 3}, {"team": "法国", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 3, "ga": 1, "gd": 2, "pts": 3}, {"team": "塞内加尔", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 3, "gd": -2, "pts": 0}, {"team": "伊拉克", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 4, "gd": -3, "pts": 0}], "J": [{"team": "阿根廷", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 3, "ga": 0, "gd": 3, "pts": 3}, {"team": "奥地利", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 3, "ga": 1, "gd": 2, "pts": 3}, {"team": "约旦", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 3, "gd": -2, "pts": 0}, {"team": "阿尔及利亚", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 3, "gd": -3, "pts": 0}], "K": [{"team": "哥伦比亚", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 3, "ga": 1, "gd": 2, "pts": 3}, {"team": "葡萄牙", "rank": 2, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "民主刚果", "rank": 3, "mp": 1, "w": 0, "d": 1, "l": 0, "gf": 1, "ga": 1, "gd": 0, "pts": 1}, {"team": "乌兹别克斯坦", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 1, "ga": 3, "gd": -2, "pts": 0}], "L": [{"team": "英格兰", "rank": 1, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 4, "ga": 2, "gd": 2, "pts": 3}, {"team": "加纳", "rank": 2, "mp": 1, "w": 1, "d": 0, "l": 0, "gf": 1, "ga": 0, "gd": 1, "pts": 3}, {"team": "巴拿马", "rank": 3, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 0, "ga": 1, "gd": -1, "pts": 0}, {"team": "克罗地亚", "rank": 4, "mp": 1, "w": 0, "d": 0, "l": 1, "gf": 2, "ga": 4, "gd": -2, "pts": 0}]}, "best_thirds": [{"group": "F", "team": "日本", "mp": 1, "pts": 1, "gd": 0, "gf": 2, "rank_among_thirds": 1, "advancing": true}, {"group": "B", "team": "卡塔尔", "mp": 1, "pts": 1, "gd": 0, "gf": 1, "rank_among_thirds": 2, "advancing": true}, {"group": "C", "team": "摩洛哥", "mp": 1, "pts": 1, "gd": 0, "gf": 1, "rank_among_thirds": 3, "advancing": true}, {"group": "G", "team": "比利时", "mp": 1, "pts": 1, "gd": 0, "gf": 1, "rank_among_thirds": 4, "advancing": true}, {"group": "K", "team": "民主刚果", "mp": 1, "pts": 1, "gd": 0, "gf": 1, "rank_among_thirds": 5, "advancing": true}, {"group": "H", "team": "西班牙", "mp": 1, "pts": 1, "gd": 0, "gf": 0, "rank_among_thirds": 6, "advancing": true}, {"group": "A", "team": "捷克", "mp": 1, "pts": 0, "gd": -1, "gf": 1, "rank_among_thirds": 7, "advancing": true}, {"group": "E", "team": "厄瓜多尔", "mp": 1, "pts": 0, "gd": -1, "gf": 0, "rank_among_thirds": 8, "advancing": true}, {"group": "L", "team": "巴拿马", "mp": 1, "pts": 0, "gd": -1, "gf": 0, "rank_among_thirds": 9, "advancing": false}, {"group": "I", "team": "塞内加尔", "mp": 1, "pts": 0, "gd": -2, "gf": 1, "rank_among_thirds": 10, "advancing": false}, {"group": "J", "team": "约旦", "mp": 1, "pts": 0, "gd": -2, "gf": 1, "rank_among_thirds": 11, "advancing": false}, {"group": "D", "team": "土耳其", "mp": 1, "pts": 0, "gd": -2, "gf": 0, "rank_among_thirds": 12, "advancing": false}], "cn_to_en": {"墨西哥": "Mexico", "南非": "South Africa", "韩国": "South Korea", "捷克": "Czech Republic", "加拿大": "Canada", "波黑": "Bosnia and Herzegovina", "卡塔尔": "Qatar", "瑞士": "Switzerland", "巴西": "Brazil", "摩洛哥": "Morocco", "海地": "Haiti", "苏格兰": "Scotland", "美国": "United States", "巴拉圭": "Paraguay", "澳大利亚": "Australia", "土耳其": "Turkey", "德国": "Germany", "库拉索": "Curaçao", "科特迪瓦": "Ivory Coast", "厄瓜多尔": "Ecuador", "荷兰": "Netherlands", "日本": "Japan", "瑞典": "Sweden", "突尼斯": "Tunisia", "比利时": "Belgium", "埃及": "Egypt", "伊朗": "Iran", "新西兰": "New Zealand", "西班牙": "Spain", "佛得角": "Cape Verde", "沙特阿拉伯": "Saudi Arabia", "乌拉圭": "Uruguay", "法国": "France", "塞内加尔": "Senegal", "伊拉克": "Iraq", "挪威": "Norway", "阿根廷": "Argentina", "阿尔及利亚": "Algeria", "奥地利": "Austria", "约旦": "Jordan", "葡萄牙": "Portugal", "民主刚果": "DR Congo", "乌兹别克斯坦": "Uzbekistan", "哥伦比亚": "Colombia", "英格兰": "England", "克罗地亚": "Croatia", "加纳": "Ghana", "巴拿马": "Panama"}, "res_by_teams": {"Mexico|South Africa": {"hs": 2, "as_": 0, "result": "H"}, "South Korea|Czech Republic": {"hs": 2, "as_": 1, "result": "H"}, "Canada|Bosnia and Herzegovina": {"hs": 1, "as_": 1, "result": "D"}, "United States|Paraguay": {"hs": 4, "as_": 1, "result": "H"}, "Qatar|Switzerland": {"hs": 1, "as_": 1, "result": "D"}, "Brazil|Morocco": {"hs": 1, "as_": 1, "result": "D"}, "Haiti|Scotland": {"hs": 0, "as_": 1, "result": "A"}, "Australia|Turkey": {"hs": 2, "as_": 0, "result": "H"}, "Netherlands|Japan": {"hs": 2, "as_": 2, "result": "D"}, "Sweden|Tunisia": {"hs": 5, "as_": 1, "result": "H"}, "Ivory Coast|Ecuador": {"hs": 1, "as_": 0, "result": "H"}, "Germany|Curaçao": {"hs": 7, "as_": 1, "result": "H"}, "Belgium|Egypt": {"hs": 1, "as_": 1, "result": "D"}, "Iran|New Zealand": {"hs": 2, "as_": 2, "result": "D"}, "Spain|Cape Verde": {"hs": 0, "as_": 0, "result": "D"}, "Saudi Arabia|Uruguay": {"hs": 1, "as_": 1, "result": "D"}, "Austria|Jordan": {"hs": 3, "as_": 1, "result": "H"}, "Argentina|Algeria": {"hs": 3, "as_": 0, "result": "H"}, "France|Senegal": {"hs": 3, "as_": 1, "result": "H"}, "Iraq|Norway": {"hs": 1, "as_": 4, "result": "A"}, "England|Croatia": {"hs": 4, "as_": 2, "result": "H"}, "Portugal|DR Congo": {"hs": 1, "as_": 1, "result": "D"}, "Uzbekistan|Colombia": {"hs": 1, "as_": 3, "result": "A"}, "Ghana|Panama": {"hs": 1, "as_": 0, "result": "H"}}, "pred_by_teams": {"Canada|Bosnia and Herzegovina": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.595, "pd": 0.254, "pa": 0.152}, "United States|Paraguay": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.368, "pd": 0.298, "pa": 0.333}, "Australia|Turkey": {"pred": "A", "actual": "H", "dc_ok": 0, "ph": 0.34, "pd": 0.291, "pa": 0.369}, "Brazil|Morocco": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.403, "pd": 0.333, "pa": 0.264}, "Haiti|Scotland": {"pred": "A", "actual": "A", "dc_ok": 1, "ph": 0.12, "pd": 0.195, "pa": 0.685}, "Qatar|Switzerland": {"pred": "A", "actual": "D", "dc_ok": 0, "ph": 0.054, "pd": 0.122, "pa": 0.824}, "Germany|Curaçao": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.941, "pd": 0.046, "pa": 0.013}, "Ivory Coast|Ecuador": {"pred": "A", "actual": "H", "dc_ok": 0, "ph": 0.21, "pd": 0.374, "pa": 0.416}, "Netherlands|Japan": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.398, "pd": 0.292, "pa": 0.31}, "Sweden|Tunisia": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.426, "pd": 0.294, "pa": 0.28}, "Belgium|Egypt": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.551, "pd": 0.279, "pa": 0.169}, "Iran|New Zealand": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.607, "pd": 0.267, "pa": 0.126}, "Saudi Arabia|Uruguay": {"pred": "A", "actual": "D", "dc_ok": 0, "ph": 0.108, "pd": 0.28, "pa": 0.611}, "Spain|Cape Verde": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.872, "pd": 0.099, "pa": 0.029}, "Austria|Jordan": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.668, "pd": 0.211, "pa": 0.121}, "Argentina|Algeria": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.62, "pd": 0.259, "pa": 0.121}, "France|Senegal": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.509, "pd": 0.282, "pa": 0.208}, "Iraq|Norway": {"pred": "A", "actual": "A", "dc_ok": 1, "ph": 0.101, "pd": 0.218, "pa": 0.681}, "Portugal|DR Congo": {"pred": "H", "actual": "D", "dc_ok": 0, "ph": 0.643, "pd": 0.249, "pa": 0.108}, "Uzbekistan|Colombia": {"pred": "A", "actual": "A", "dc_ok": 1, "ph": 0.112, "pd": 0.238, "pa": 0.65}, "England|Croatia": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.494, "pd": 0.299, "pa": 0.207}, "Ghana|Panama": {"pred": "H", "actual": "H", "dc_ok": 1, "ph": 0.378, "pd": 0.298, "pa": 0.324}, "Czech Republic|South Africa": {"pred": "H", "actual": null, "dc_ok": null, "ph": 0.501, "pd": 0.285, "pa": 0.213}, "Mexico|South Korea": {"pred": "H", "actual": null, "dc_ok": null, "ph": 0.503, "pd": 0.272, "pa": 0.226}, "Switzerland|Bosnia and Herzegovina": {"pred": "H", "actual": null, "dc_ok": null, "ph": 0.677, "pd": 0.211, "pa": 0.112}, "Canada|Qatar": {"pred": "H", "actual": null, "dc_ok": null, "ph": 0.75, "pd": 0.167, "pa": 0.083}}};
+
+// ── 工具函数 ─────────────────────────────────────────────────────────────────
+const pct  = v => (v*100).toFixed(1)+'%';
+const pct0 = v => (v*100).toFixed(0)+'%';
+const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const tick = v => v ? '<span class="ok">✓</span>' : '<span class="ng">✗</span>';
+const badge = pred => {
+  const cls = {H:'pred-H',D:'pred-D',A:'pred-A'}[pred]||'pred-D';
+  return `<span class="pred-badge ${cls}">${pred||'?'}</span>`;
+};
+const sgn = n => n > 0 ? '+'+n : String(n);
+
+// ── 标签页切换 ────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tabbtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabbtn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tabpage').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pg-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── 顶栏摘要 ─────────────────────────────────────────────────────────────────
+(function(){
+  const s = DATA.summary;
+  document.getElementById('pills').innerHTML = [
+    {l:'已结算', v:s.n_settled+' 场', c:'info'},
+    {l:'DC准确率', v:pct(s.dc_acc), c: s.dc_acc>=DATA.bt_acc?'good':'warn'},
+    {l:'Brier',    v:s.dc_brier.toFixed(3), c: s.dc_brier<=DATA.bt_brier?'good':'warn'},
+    {l:'平局率',   v:pct(s.draw_rate), c:'warn'},
+    {l:'待赛',     v:s.n_upcoming+' 场', c:'muted'},
+  ].map(p=>`<div class="pill ${p.c}"><span>${p.v}</span> ${p.l}</div>`).join('');
+  document.getElementById('gentime').textContent = '生成于 ' + s.gen_time;
+})();
+
+// ── Panel 1: 待赛预测 ────────────────────────────────────────────────────────
+(function(){
+  const cnt  = document.getElementById('upcoming-count');
+  const body = document.getElementById('upcoming-body');
+  cnt.textContent = DATA.upcoming.length + ' 场';
+  if(!DATA.upcoming.length){
+    body.innerHTML='<div class="empty">今日暂无待赛场次<br><small>运行 daily_update.py 后刷新</small></div>'; return;
+  }
+  body.innerHTML = `<table class="ptbl"><thead><tr>
+    <th>日期/北京时间</th><th>对阵</th><th>H &nbsp;D &nbsp;A 概率</th><th>DC</th><th>XGB</th>
+  </tr></thead><tbody>${DATA.upcoming.map(m=>{
+    const highRow = m.high_conf ? 'style="box-shadow:inset 3px 0 0 #fbbf24"':'';
+    const dc = m.bj_time ? `${m.date}<br><small style="color:var(--muted)">${m.bj_time}</small>` : m.date;
+    return `<tr ${highRow}>
+      <td class="date-cell">${dc}</td>
+      <td class="team-cell">${esc(m.home)}<span class="vs">vs</span>${esc(m.away)}</td>
+      <td><div class="prob-bar">
+        <div class="pb-h" style="width:${pct0(m.ph)}">${pct0(m.ph)}</div>
+        <div class="pb-d" style="width:${pct0(m.pd)}">${pct0(m.pd)}</div>
+        <div class="pb-a" style="width:${pct0(m.pa)}">${pct0(m.pa)}</div>
+      </div></td>
+      <td>${badge(m.dc_pred)}${m.high_conf?'<span class="conf-badge">高</span>':''}</td>
+      <td>${badge(m.xgb_pred)}</td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+})();
+
+// ── Panel 2: 折线图 ──────────────────────────────────────────────────────────
+(function(){
+  const r = DATA.running;
+  document.getElementById('chart-n').textContent = r.length + ' 场';
+  if(!r.length){ document.getElementById('chartAcc').parentElement.innerHTML='<div class="empty">暂无结算数据</div>'; return; }
+  const labels   = r.map(d=>d.label);
+  const ptColors = r.map(d=>d.dc_correct_this?'#4ade80':'#f87171');
+  const tips     = r.map(d=>d.match+' ['+d.actual+']');
+  const cOpts = {responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{title:i=>tips[i[0].dataIndex]},bodyFont:{size:11}}},
+    elements:{point:{radius:5,hoverRadius:7}},
+    scales:{x:{ticks:{font:{size:10}},grid:{color:'#1a2a3a'}}}};
+  new Chart(document.getElementById('chartAcc'),{type:'line',data:{labels,datasets:[
+    {label:'DC',data:r.map(d=>+(d.dc_acc*100).toFixed(1)),borderColor:'#38bdf8',
+     pointBackgroundColor:ptColors,pointBorderColor:ptColors,tension:.3,fill:false},
+    {label:'Adj',data:r.map(d=>+(d.adj_acc*100).toFixed(1)),borderColor:'#c084fc',
+     pointStyle:'triangle',pointRadius:4,tension:.3,fill:false},
+    {label:'BLa',data:r.map(d=>+(d.bla_acc*100).toFixed(1)),borderColor:'#fb923c',pointRadius:0,tension:.3,fill:false},
+    {label:'基准',data:r.map(_=>+(DATA.bt_acc*100).toFixed(1)),borderColor:'#4ade8066',
+     borderDash:[5,4],pointRadius:0,fill:false},
+  ]},options:{...cOpts,scales:{...cOpts.scales,y:{min:0,max:100,
+    title:{display:true,text:'累计准确率(%)',color:'#64748b',font:{size:11}},
+    grid:{color:'#1a2a3a'},ticks:{color:'#64748b',font:{size:10}}}}}});
+  new Chart(document.getElementById('chartBrier'),{type:'line',data:{labels,datasets:[
+    {label:'DC Brier',data:r.map(d=>+d.dc_brier.toFixed(3)),borderColor:'#38bdf8',
+     backgroundColor:'#38bdf810',pointRadius:3,tension:.3,fill:true},
+    {label:'基准',data:r.map(_=>+DATA.bt_brier.toFixed(3)),borderColor:'#4ade8066',
+     borderDash:[5,4],pointRadius:0,fill:false},
+  ]},options:{...cOpts,scales:{...cOpts.scales,y:{
+    title:{display:true,text:'Brier (↓越小越好)',color:'#64748b',font:{size:10}},
+    grid:{color:'#1a2a3a'},ticks:{color:'#64748b',font:{size:10}}}}}});
+  document.getElementById('chart-legend').innerHTML=[
+    {c:'#38bdf8',l:'DC（绿点=命中/红点=失误）'},{c:'#c084fc',l:'XGB+调整'},
+    {c:'#fb923c',l:'BLa基线'},{c:'#4ade8066',l:'回测基准',dash:true}
+  ].map(({c,l,dash})=>`<div class="legend-item">${dash
+    ?`<div class="legend-dash" style="border-color:${c}"></div>`
+    :`<div class="legend-dot" style="background:${c}"></div>`}<span>${l}</span></div>`).join('');
+  const dc=DATA.settled.filter(s=>s.actual==='D').length;
+  document.getElementById('chart-note').textContent=
+    `已结算${r.length}场，含${dc}场平局(${pct(dc/r.length)})；回测基准 ACC=${pct(DATA.bt_acc)} Brier=${DATA.bt_brier.toFixed(3)}`;
+})();
+
+// ── Panel 4: 模型表现 ────────────────────────────────────────────────────────
+(function(){
+  const s=DATA.summary, n=s.n_settled;
+  document.getElementById('perf-n').textContent=n+' 场';
+  if(!n){document.getElementById('perf-body').innerHTML='<div class="empty">暂无数据</div>';return;}
+  const models=[
+    {name:'DC Dixon-Coles',acc:s.dc_acc,brier:s.dc_brier,c:'#38bdf8'},
+    {name:'XGB+平局调整', acc:s.adj_acc,brier:null,c:'#c084fc'},
+    {name:'XGB原始',      acc:s.xgb_acc,brier:null,c:'#818cf8'},
+    {name:'BLa Elo基线',  acc:s.bla_acc,brier:null,c:'#fb923c'},
+  ];
+  const maxA=Math.max(...models.map(m=>m.acc));
+  document.getElementById('perf-body').innerHTML=models.map(m=>`
+    <div style="display:flex;align-items:center;gap:.5rem;padding:.28rem 0;border-bottom:1px solid var(--border)">
+      <div class="model-label" style="width:105px;color:${m.c}">${m.name}</div>
+      <div class="score-bar" style="width:${(m.acc/maxA*80).toFixed(0)}px;background:${m.c}"></div>
+      <div class="acc-val" style="color:${m.acc===maxA?'#4ade80':'var(--txt)'}">${pct(m.acc)}</div>
+      ${m.brier!==null?`<span style="color:var(--muted);font-size:.73rem">Brier ${m.brier.toFixed(3)}</span>`:''}
+    </div>`).join('');
+  document.getElementById('settled-tbody').innerHTML=DATA.settled.slice().reverse().map(r=>{
+    const dc = r.bj_time ? `${r.date}<br><small style="color:var(--muted)">${r.bj_time}</small>` : r.date;
+    return `<tr>
+      <td class="date-cell">${dc}</td>
+      <td><span style="font-size:.76rem">${esc(r.home)}<span style="color:var(--muted)"> vs </span>${esc(r.away)}</span></td>
+      <td>${badge(r.actual)}</td>
+      <td>${tick(r.dc_correct)}</td><td>${tick(r.xgb_correct)}</td>
+      <td>${tick(r.adj_correct)}</td><td>${tick(r.bla_correct)}</td>
+      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span></td>
+    </tr>`; }).join('');
+})();
+
+// ── Panel 3: 夺冠概率 ────────────────────────────────────────────────────────
+(function(){
+  const el=document.getElementById('champ-body');
+  if(!DATA.mc||!DATA.mc.length){
+    el.innerHTML='<div class="empty">🔬 蒙特卡洛模块尚未运行<br><small style="color:var(--muted)">运行 step7_predict_2026.py 生成后刷新</small></div>';return;
+  }
+  const tk=Object.keys(DATA.mc[0])[0],pk=Object.keys(DATA.mc[0])[1];
+  const mx=Math.max(...DATA.mc.map(r=>r[pk]));
+  el.innerHTML='<div class="champ-list">'+DATA.mc.map((r,i)=>{
+    const w=Math.max(4,(r[pk]/mx*100)).toFixed(0);
+    return `<div class="champ-row"><div class="champ-name">#${i+1} ${esc(r[tk])}</div>
+      <div class="champ-bar-wrap"><div class="champ-bar" style="width:${w}%">${pct(r[pk])}</div></div></div>`;
+  }).join('')+'</div>';
+})();
+
+// ══ 积分榜 ══════════════════════════════════════════════════════════════════
+(function(){
+  // ── 最佳第三名 ──
+  const bt = DATA.best_thirds;
+  const b3el = document.getElementById('best3-body');
+  if(!bt||!bt.length){
+    b3el.innerHTML='<div class="empty">小组赛尚未开始</div>';
+  } else {
+    b3el.innerHTML=`<table class="b3tbl"><thead><tr>
+      <th>名次</th><th>组</th><th>球队</th><th>赛</th><th>积分</th><th>净胜球</th><th>进球</th><th>状态</th>
+    </tr></thead><tbody>${bt.map(r=>`<tr>
+      <td>${r.rank_among_thirds}</td>
+      <td><span class="badge">${r.group}</span></td>
+      <td style="font-weight:500">${esc(r.team)}</td>
+      <td>${r.mp}</td>
+      <td style="font-weight:700;color:var(--txt)">${r.pts}</td>
+      <td>${sgn(r.gd)}</td><td>${r.gf}</td>
+      <td class="${r.advancing?'adv-yes':'adv-no'}">${r.advancing?'✓ 晋级':'— 淘汰'}</td>
+    </tr>`).join('')}</tbody></table>
+    `;
+  }
+
+  // ── 12组积分榜 ──
+  const grid = document.getElementById('grp-grid');
+  const grpOrder = 'ABCDEFGHIJKL'.split('');
+  grid.innerHTML = grpOrder.map(g => {
+    const rows = DATA.standings[g];
+    if(!rows) return '';
+    const hasPlayed = rows.some(r=>r.mp>0);
+    const tbody = rows.map(r=>{
+      const cls = 'r'+r.rank;
+      const rankLabel = r.rank<=2
+        ? `${r.rank}<span class="out-zone-label">✓</span>`
+        : r.rank===3
+          ? `${r.rank}<span class="b3-zone-label">★</span>`
+          : `${r.rank}`;
+      return `<tr class="${cls}">
+        <td style="text-align:center">${rankLabel}</td>
+        <td>${esc(r.team)}</td>
+        <td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
+        <td>${r.gf}</td><td>${r.ga}</td>
+        <td style="color:${r.gd>0?'#4ade80':r.gd<0?'#f87171':'var(--dim)'}">${sgn(r.gd)}</td>
+        <td style="font-weight:700;color:var(--txt)">${r.pts}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="card grp-card">
+      <div class="card-title">小组 ${g}${hasPlayed?'':' <span style="color:var(--muted);font-size:.7rem;font-weight:400">待赛</span>'}</div>
+      <table class="grp-tbl"><thead><tr>
+        <th style="text-align:center">名</th><th>球队</th>
+        <th>赛</th><th>胜</th><th>平</th><th>负</th>
+        <th>进</th><th>失</th><th>净</th><th>分</th>
+      </tr></thead><tbody>${tbody}</tbody></table>
+    </div>`;
+  }).join('');
+})();
+
+// ══ MATCHES 全局定义（赛程页 + 北京时间查询）════════════════════════════════
+const MATCHES = [
+  // === 小组赛 第1轮 ===
+  { id:1,  date:'2026-06-12', time:'03:00', group:'A', home:'墨西哥',     away:'南非',     round:1, venue:'墨西哥城·阿兹特克体育场', focus:'🎬揭幕战' },
+  { id:2,  date:'2026-06-12', time:'10:00', group:'A', home:'韩国',       away:'捷克',     round:1, venue:'瓜达拉哈拉体育场' },
+  { id:3,  date:'2026-06-13', time:'03:00', group:'B', home:'加拿大',     away:'波黑',     round:1, venue:'多伦多·BMO球场' },
+  { id:4,  date:'2026-06-13', time:'09:00', group:'D', home:'美国',       away:'巴拉圭',   round:1, venue:'洛杉矶·SoFi体育场' },
+  { id:5,  date:'2026-06-14', time:'03:00', group:'B', home:'卡塔尔',     away:'瑞士',     round:1, venue:'旧金山·Levi\'s体育场' },
+  { id:6,  date:'2026-06-14', time:'06:00', group:'C', home:'巴西',       away:'摩洛哥',   round:1, venue:'纽约·大都会人寿体育场', focus:'⭐焦点战' },
+  { id:7,  date:'2026-06-14', time:'09:00', group:'C', home:'海地',       away:'苏格兰',   round:1, venue:'波士顿·吉列体育场' },
+  { id:8,  date:'2026-06-14', time:'12:00', group:'D', home:'澳大利亚',   away:'土耳其',   round:1, venue:'温哥华·BC Place' },
+  { id:9,  date:'2026-06-15', time:'01:00', group:'E', home:'德国',       away:'库拉索',   round:1, venue:'休斯顿·NRG体育场' },
+  { id:10, date:'2026-06-15', time:'04:00', group:'F', home:'荷兰',       away:'日本',     round:1, venue:'达拉斯·AT&T体育场', focus:'🔥死亡之组' },
+  { id:11, date:'2026-06-15', time:'07:00', group:'E', home:'科特迪瓦',   away:'厄瓜多尔', round:1, venue:'费城·林肯金融球场' },
+  { id:12, date:'2026-06-15', time:'10:00', group:'F', home:'瑞典',       away:'突尼斯',   round:1, venue:'蒙特雷体育场', focus:'🔥死亡之组' },
+  { id:13, date:'2026-06-16', time:'00:00', group:'H', home:'西班牙',     away:'佛得角',   round:1, venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:14, date:'2026-06-16', time:'03:00', group:'G', home:'比利时',     away:'埃及',     round:1, venue:'西雅图·Lumen球场' },
+  { id:15, date:'2026-06-16', time:'06:00', group:'H', home:'沙特阿拉伯', away:'乌拉圭',   round:1, venue:'迈阿密·硬石体育场' },
+  { id:16, date:'2026-06-16', time:'09:00', group:'G', home:'伊朗',       away:'新西兰',   round:1, venue:'洛杉矶·SoFi体育场' },
+  { id:17, date:'2026-06-17', time:'03:00', group:'I', home:'法国',       away:'塞内加尔', round:1, venue:'纽约·大都会人寿体育场', focus:'⚡姆巴佩vs马内' },
+  { id:18, date:'2026-06-17', time:'06:00', group:'I', home:'伊拉克',     away:'挪威',     round:1, venue:'波士顿·吉列体育场', focus:'哈兰德世界杯首秀' },
+  { id:19, date:'2026-06-17', time:'09:00', group:'J', home:'阿根廷',     away:'阿尔及利亚',round:1,venue:'堪萨斯城·箭头体育场', focus:'⭐梅西最后一届首秀' },
+  { id:20, date:'2026-06-17', time:'12:00', group:'J', home:'奥地利',     away:'约旦',     round:1, venue:'旧金山·Levi\'s体育场' },
+  { id:21, date:'2026-06-18', time:'01:00', group:'K', home:'葡萄牙',     away:'民主刚果', round:1, venue:'休斯顿·NRG体育场', focus:'⭐C罗最后一届首秀' },
+  { id:22, date:'2026-06-18', time:'04:00', group:'L', home:'英格兰',     away:'克罗地亚', round:1, venue:'达拉斯·AT&T体育场', focus:'🔥欧洲强强对话' },
+  { id:23, date:'2026-06-18', time:'07:00', group:'L', home:'加纳',       away:'巴拿马',   round:1, venue:'多伦多·BMO球场' },
+  { id:24, date:'2026-06-18', time:'10:00', group:'K', home:'乌兹别克斯坦',away:'哥伦比亚',round:1,venue:'墨西哥城·阿兹特克体育场' },
+  // === 第2轮 ===
+  { id:25, date:'2026-06-19', time:'00:00', group:'A', home:'捷克',       away:'南非',     round:2, venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:26, date:'2026-06-19', time:'03:00', group:'B', home:'瑞士',       away:'波黑',     round:2, venue:'洛杉矶·SoFi体育场' },
+  { id:27, date:'2026-06-19', time:'06:00', group:'B', home:'加拿大',     away:'卡塔尔',   round:2, venue:'温哥华·BC Place' },
+  { id:28, date:'2026-06-19', time:'09:00', group:'A', home:'墨西哥',     away:'韩国',     round:2, venue:'瓜达拉哈拉体育场', focus:'🔥A组头名之争' },
+  { id:29, date:'2026-06-20', time:'03:00', group:'D', home:'美国',       away:'澳大利亚', round:2, venue:'西雅图·Lumen球场' },
+  { id:30, date:'2026-06-20', time:'06:00', group:'C', home:'苏格兰',     away:'摩洛哥',   round:2, venue:'波士顿·吉列体育场' },
+  { id:31, date:'2026-06-20', time:'09:00', group:'C', home:'巴西',       away:'海地',     round:2, venue:'费城·林肯金融球场' },
+  { id:32, date:'2026-06-20', time:'12:00', group:'D', home:'土耳其',     away:'巴拉圭',   round:2, venue:'旧金山·Levi\'s体育场' },
+  { id:33, date:'2026-06-21', time:'01:00', group:'F', home:'荷兰',       away:'瑞典',     round:2, venue:'达拉斯·AT&T体育场', focus:'🔥死亡之组决战' },
+  { id:34, date:'2026-06-21', time:'04:00', group:'E', home:'德国',       away:'科特迪瓦', round:2, venue:'多伦多·BMO球场' },
+  { id:35, date:'2026-06-21', time:'08:00', group:'E', home:'厄瓜多尔',   away:'库拉索',   round:2, venue:'堪萨斯城·箭头体育场' },
+  { id:36, date:'2026-06-21', time:'12:00', group:'F', home:'突尼斯',     away:'日本',     round:2, venue:'蒙特雷体育场' },
+  { id:37, date:'2026-06-22', time:'00:00', group:'H', home:'西班牙',     away:'沙特阿拉伯',round:2,venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:38, date:'2026-06-22', time:'03:00', group:'G', home:'比利时',     away:'伊朗',     round:2, venue:'洛杉矶·SoFi体育场' },
+  { id:39, date:'2026-06-22', time:'06:00', group:'H', home:'乌拉圭',     away:'佛得角',   round:2, venue:'迈阿密·硬石体育场' },
+  { id:40, date:'2026-06-22', time:'09:00', group:'G', home:'新西兰',     away:'埃及',     round:2, venue:'温哥华·BC Place' },
+  { id:41, date:'2026-06-23', time:'01:00', group:'J', home:'阿根廷',     away:'奥地利',   round:2, venue:'达拉斯·AT&T体育场', focus:'⭐J组头名之争' },
+  { id:42, date:'2026-06-23', time:'05:00', group:'I', home:'法国',       away:'伊拉克',   round:2, venue:'费城·林肯金融球场' },
+  { id:43, date:'2026-06-23', time:'08:00', group:'I', home:'挪威',       away:'塞内加尔', round:2, venue:'纽约·大都会人寿体育场', focus:'⚡哈兰德vs马内' },
+  { id:44, date:'2026-06-23', time:'11:00', group:'J', home:'约旦',       away:'阿尔及利亚',round:2,venue:'旧金山·Levi\'s体育场' },
+  { id:45, date:'2026-06-24', time:'01:00', group:'K', home:'葡萄牙',     away:'乌兹别克斯坦',round:2,venue:'休斯顿·NRG体育场' },
+  { id:46, date:'2026-06-24', time:'04:00', group:'L', home:'英格兰',     away:'加纳',     round:2, venue:'波士顿·吉列体育场' },
+  { id:47, date:'2026-06-24', time:'07:00', group:'L', home:'巴拿马',     away:'克罗地亚', round:2, venue:'多伦多·BMO球场' },
+  { id:48, date:'2026-06-24', time:'10:00', group:'K', home:'哥伦比亚',   away:'民主刚果', round:2, venue:'墨西哥城·阿兹特克体育场' },
+  // === 第3轮 (末轮同组同时开球) ===
+  { id:49, date:'2026-06-25', time:'03:00', group:'B', home:'瑞士',       away:'加拿大',   round:3, venue:'温哥华·BC Place', focus:'B组出线决战' },
+  { id:50, date:'2026-06-25', time:'03:00', group:'B', home:'波黑',       away:'卡塔尔',   round:3, venue:'西雅图·Lumen球场' },
+  { id:51, date:'2026-06-25', time:'06:00', group:'C', home:'苏格兰',     away:'巴西',     round:3, venue:'迈阿密·硬石体育场', focus:'🔥巴西关键战' },
+  { id:52, date:'2026-06-25', time:'06:00', group:'C', home:'摩洛哥',     away:'海地',     round:3, venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:53, date:'2026-06-25', time:'09:00', group:'A', home:'捷克',       away:'墨西哥',   round:3, venue:'墨西哥城·阿兹特克体育场', focus:'A组出线决战' },
+  { id:54, date:'2026-06-25', time:'09:00', group:'A', home:'南非',       away:'韩国',     round:3, venue:'蒙特雷体育场' },
+  { id:55, date:'2026-06-26', time:'04:00', group:'E', home:'厄瓜多尔',   away:'德国',     round:3, venue:'纽约·大都会人寿体育场', focus:'E组头名战' },
+  { id:56, date:'2026-06-26', time:'04:00', group:'E', home:'库拉索',     away:'科特迪瓦', round:3, venue:'费城·林肯金融球场' },
+  { id:57, date:'2026-06-26', time:'07:00', group:'F', home:'日本',       away:'瑞典',     round:3, venue:'达拉斯·AT&T体育场', focus:'🔥死亡之组终局' },
+  { id:58, date:'2026-06-26', time:'07:00', group:'F', home:'突尼斯',     away:'荷兰',     round:3, venue:'堪萨斯城·箭头体育场' },
+  { id:59, date:'2026-06-26', time:'10:00', group:'D', home:'土耳其',     away:'美国',     round:3, venue:'洛杉矶·SoFi体育场', focus:'D组头名战' },
+  { id:60, date:'2026-06-26', time:'10:00', group:'D', home:'巴拉圭',     away:'澳大利亚', round:3, venue:'旧金山·Levi\'s体育场' },
+  { id:61, date:'2026-06-27', time:'03:00', group:'I', home:'挪威',       away:'法国',     round:3, venue:'波士顿·吉列体育场', focus:'⚡哈兰德vs姆巴佩' },
+  { id:62, date:'2026-06-27', time:'03:00', group:'I', home:'塞内加尔',   away:'伊拉克',   round:3, venue:'多伦多·BMO球场' },
+  { id:63, date:'2026-06-27', time:'08:00', group:'H', home:'佛得角',     away:'沙特阿拉伯',round:3,venue:'休斯顿·NRG体育场' },
+  { id:64, date:'2026-06-27', time:'08:00', group:'H', home:'乌拉圭',     away:'西班牙',   round:3, venue:'瓜达拉哈拉体育场', focus:'🔥H组冠军战' },
+  { id:65, date:'2026-06-27', time:'11:00', group:'G', home:'新西兰',     away:'比利时',   round:3, venue:'温哥华·BC Place' },
+  { id:66, date:'2026-06-27', time:'11:00', group:'G', home:'埃及',       away:'伊朗',     round:3, venue:'西雅图·Lumen球场' },
+  { id:67, date:'2026-06-28', time:'05:00', group:'L', home:'巴拿马',     away:'英格兰',   round:3, venue:'纽约·大都会人寿体育场' },
+  { id:68, date:'2026-06-28', time:'05:00', group:'L', home:'克罗地亚',   away:'加纳',     round:3, venue:'费城·林肯金融球场' },
+  { id:69, date:'2026-06-28', time:'07:30', group:'K', home:'哥伦比亚',   away:'葡萄牙',   round:3, venue:'迈阿密·硬石体育场', focus:'⭐C罗小组终战' },
+  { id:70, date:'2026-06-28', time:'07:30', group:'K', home:'民主刚果',   away:'乌兹别克斯坦',round:3,venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:71, date:'2026-06-28', time:'10:00', group:'J', home:'阿尔及利亚', away:'奥地利',   round:3, venue:'堪萨斯城·箭头体育场' },
+  { id:72, date:'2026-06-28', time:'10:00', group:'J', home:'约旦',       away:'阿根廷',   round:3, venue:'达拉斯·AT&T体育场', focus:'⭐梅西小组终战' },
+  // === 淘汰赛 32强 ===
+  { id:73,  date:'2026-06-29', time:'待定', group:'KO', home:'A组第2',          away:'B组第2',          round:'R32',   venue:'洛杉矶·SoFi体育场' },
+  { id:74,  date:'2026-06-30', time:'待定', group:'KO', home:'E组第1',          away:'第3(A/B/C/D)',    round:'R32',   venue:'波士顿·吉列体育场' },
+  { id:75,  date:'2026-06-30', time:'待定', group:'KO', home:'F组第1',          away:'C组第2',          round:'R32',   venue:'蒙特雷体育场' },
+  { id:76,  date:'2026-06-30', time:'待定', group:'KO', home:'C组第1',          away:'F组第2',          round:'R32',   venue:'休斯顿·NRG体育场' },
+  { id:77,  date:'2026-07-01', time:'待定', group:'KO', home:'I组第1',          away:'第3(E/F/G/H)',    round:'R32',   venue:'纽约·大都会人寿体育场' },
+  { id:78,  date:'2026-07-01', time:'待定', group:'KO', home:'E组第2',          away:'I组第2',          round:'R32',   venue:'达拉斯·AT&T体育场' },
+  { id:79,  date:'2026-07-01', time:'待定', group:'KO', home:'A组第1',          away:'第3(C/D/E/F)',    round:'R32',   venue:'墨西哥城·阿兹特克体育场' },
+  { id:80,  date:'2026-07-02', time:'待定', group:'KO', home:'L组第1',          away:'第3(I/J/K/L)',    round:'R32',   venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:81,  date:'2026-07-02', time:'待定', group:'KO', home:'D组第1',          away:'第3(B/E/F/G)',    round:'R32',   venue:'旧金山·Levi\'s体育场' },
+  { id:82,  date:'2026-07-02', time:'待定', group:'KO', home:'G组第1',          away:'第3(A/E/H/I)',    round:'R32',   venue:'西雅图·Lumen球场' },
+  { id:83,  date:'2026-07-03', time:'待定', group:'KO', home:'K组第2',          away:'L组第2',          round:'R32',   venue:'多伦多·BMO球场' },
+  { id:84,  date:'2026-07-03', time:'待定', group:'KO', home:'H组第1',          away:'J组第2',          round:'R32',   venue:'洛杉矶·SoFi体育场' },
+  { id:85,  date:'2026-07-03', time:'待定', group:'KO', home:'B组第1',          away:'第3(E/F/G/H)',    round:'R32',   venue:'温哥华·BC Place' },
+  { id:86,  date:'2026-07-04', time:'待定', group:'KO', home:'J组第1',          away:'H组第2',          round:'R32',   venue:'迈阿密·硬石体育场' },
+  { id:87,  date:'2026-07-04', time:'待定', group:'KO', home:'K组第1',          away:'第3(D/E/I/J)',    round:'R32',   venue:'堪萨斯城·箭头体育场' },
+  { id:88,  date:'2026-07-04', time:'待定', group:'KO', home:'D组第2',          away:'G组第2',          round:'R32',   venue:'达拉斯·AT&T体育场' },
+  // === 16强 ===
+  { id:89,  date:'2026-07-05', time:'待定', group:'KO', home:'R32-73胜者',      away:'R32-74胜者',      round:'R16',   venue:'费城·林肯金融球场' },
+  { id:90,  date:'2026-07-05', time:'待定', group:'KO', home:'R32-76胜者',      away:'R32-75胜者',      round:'R16',   venue:'休斯顿·NRG体育场' },
+  { id:91,  date:'2026-07-06', time:'待定', group:'KO', home:'R32-77胜者',      away:'R32-78胜者',      round:'R16',   venue:'纽约·大都会人寿体育场' },
+  { id:92,  date:'2026-07-06', time:'待定', group:'KO', home:'R32-79胜者',      away:'R32-80胜者',      round:'R16',   venue:'墨西哥城·阿兹特克体育场' },
+  { id:93,  date:'2026-07-07', time:'待定', group:'KO', home:'R32-82胜者',      away:'R32-81胜者',      round:'R16',   venue:'达拉斯·AT&T体育场' },
+  { id:94,  date:'2026-07-07', time:'待定', group:'KO', home:'R32-84胜者',      away:'R32-83胜者',      round:'R16',   venue:'西雅图·Lumen球场' },
+  { id:95,  date:'2026-07-08', time:'待定', group:'KO', home:'R32-85胜者',      away:'R32-86胜者',      round:'R16',   venue:'亚特兰大·梅赛德斯-奔驰体育场' },
+  { id:96,  date:'2026-07-08', time:'待定', group:'KO', home:'R32-88胜者',      away:'R32-87胜者',      round:'R16',   venue:'温哥华·BC Place' },
+  // === 八强 ===
+  { id:97,  date:'2026-07-10', time:'待定', group:'KO', home:'R16-89胜者',      away:'R16-90胜者',      round:'QF',    venue:'波士顿·吉列体育场' },
+  { id:98,  date:'2026-07-11', time:'待定', group:'KO', home:'R16-91胜者',      away:'R16-92胜者',      round:'QF',    venue:'洛杉矶·SoFi体育场' },
+  { id:99,  date:'2026-07-11', time:'待定', group:'KO', home:'R16-93胜者',      away:'R16-94胜者',      round:'QF',    venue:'迈阿密·硬石体育场' },
+  { id:100, date:'2026-07-12', time:'待定', group:'KO', home:'R16-95胜者',      away:'R16-96胜者',      round:'QF',    venue:'堪萨斯城·箭头体育场' },
+  // === 半决赛 ===
+  { id:101, date:'2026-07-15', time:'待定', group:'KO', home:'QF-97胜者',       away:'QF-98胜者',       round:'SF',    venue:'达拉斯·AT&T体育场', focus:'🔥半决赛' },
+  { id:102, date:'2026-07-16', time:'待定', group:'KO', home:'QF-99胜者',       away:'QF-100胜者',      round:'SF',    venue:'亚特兰大·梅赛德斯-奔驰体育场', focus:'🔥半决赛' },
+  // === 季军赛 ===
+  { id:103, date:'2026-07-19', time:'待定', group:'KO', home:'SF-101负者',      away:'SF-102负者',      round:'3RD',   venue:'迈阿密·硬石体育场', focus:'🥉季军战' },
+  // === 决赛 ===
+  { id:104, date:'2026-07-20', time:'03:00', group:'KO', home:'SF-101胜者',     away:'SF-102胜者',      round:'FINAL', venue:'纽约·大都会人寿体育场', focus:'🏆世界杯决赛' },
+];
+
+// ── 赛程渲染 ──────────────────────────────────────────────────────────────────
+(function(){
+const ROUND_LABEL = {1:'第1轮',2:'第2轮',3:'第3轮(末轮)',
+  'R32':'32强','R16':'16强','QF':'八强','SF':'半决赛','3RD':'季军赛','FINAL':'决赛'};
+const STAGE_COLOR = {'R32':'#818cf8','R16':'#c084fc','QF':'#fb923c',
+  'SF':'#f87171','3RD':'#94a3b8','FINAL':'#fbbf24'};
+
+function toBJ(bjTime) {
+  return (!bjTime||bjTime==='待定') ? '待定' : bjTime;
+}
+
+// 按球队名（英文）查找结果和预测
+const CN2EN = DATA.cn_to_en;
+const RES   = DATA.res_by_teams;   // 'home_en|away_en' → {hs,as_,result}
+const PRED  = DATA.pred_by_teams;  // 'home_en|away_en' → {pred,actual,dc_ok,ph,pd,pa}
+
+const body = document.getElementById('sched-body');
+
+// 按 UTC 日期分组
+const byDate = {};
+MATCHES.forEach(m => {
+  if(!byDate[m.date]) byDate[m.date]=[];
+  byDate[m.date].push(m);
+});
+
+body.innerHTML = Object.keys(byDate).sort().map(date => {
+  const ms = byDate[date];
+  // 数每天已赛场次
+  const playedCnt = ms.filter(m => {
+    const homeEn = CN2EN[m.home]||m.home;
+    const awayEn = CN2EN[m.away]||m.away;
+    return !!RES[homeEn+'|'+awayEn];
+  }).length;
+
+  const dayLabel = new Date(date+'T12:00:00Z').toLocaleDateString('zh-CN',
+    {month:'long',day:'numeric',weekday:'short'});
+
+  const items = ms.map(m => {
+    const homeEn  = CN2EN[m.home]||m.home;
+    const awayEn  = CN2EN[m.away]||m.away;
+    const lkpKey  = homeEn+'|'+awayEn;
+    const res     = RES[lkpKey];
+    const pred    = PRED[lkpKey];
+    const isKO    = m.group==='KO';
+    const isPlayed = !!res;
+    const bjTime  = toBJ(m.time);
+    const roundLbl= ROUND_LABEL[m.round]||String(m.round);
+    const stageC  = STAGE_COLOR[m.round]||'var(--muted)';
+
+    // 时间列
+    const timeHtml = bjTime==='待定'
+      ? `<div class="sched-bj" style="color:var(--muted);font-style:italic">待定</div>`
+      : `<div class="sched-bj">${bjTime}</div>`;
+
+    // 阶段/组标签
+    const stagePart = isKO
+      ? `<span class="sched-stage-badge" style="color:${stageC}">${roundLbl}</span>`
+      : `<span class="sched-stage-badge">${roundLbl}</span>`
+        + `<span class="sched-grp-badge">${m.group}组</span>`;
+    const focusPart = m.focus ? `<span class="sched-focus-tag">${m.focus}</span>` : '';
+
+    // 球队+比分行
+    let winnerCls='', scoreHtml='';
+    if(isPlayed){
+      scoreHtml = `<span class="sched-score">${res.hs} - ${res.as_}</span>`;
+      winnerCls = res.result==='H'?'winner-h':res.result==='A'?'winner-a':'';
+    } else {
+      scoreHtml = `<span class="sched-pending">${isKO?'待定阵容':'待赛'}</span>`;
+    }
+    const homeCls = isKO&&!isPlayed?'ko-home':'sched-home';
+    const awayCls = isKO&&!isPlayed?'ko-away':'sched-away';
+
+    // 预测行
+    let predHtml='';
+    if(pred){
+      if(isPlayed && pred.dc_ok!==null){
+        predHtml=`<div class="sched-pred-row"><span class="sched-pred-lbl">DC</span>${badge(pred.pred)}${pred.dc_ok?'<span class="ok"> ✓</span>':'<span class="ng"> ✗</span>'}</div>`;
+      } else if(!isPlayed){
+        predHtml=`<div class="sched-pred-row"><span class="sched-pred-lbl">DC</span>${badge(pred.pred)}</div>`;
+      }
+    }
+
+    return `<div class="sched-match${m.focus?' focus-match':''}${isKO?' ko-match':''} ${winnerCls}">
+      <div class="sched-time-col">${timeHtml}</div>
+      <div class="sched-main">
+        <div class="sched-meta">${stagePart}${focusPart}</div>
+        <div class="sched-teams-row">
+          <span class="${homeCls}">${esc(m.home)}</span>
+          <span class="sched-vs">vs</span>
+          <span class="${awayCls}">${esc(m.away)}</span>
+          ${scoreHtml}
+        </div>
+        <div class="sched-venue-txt">📍 ${esc(m.venue)}</div>
+      </div>
+      <div class="sched-right">${predHtml}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="sched-day">
+    <div class="sched-day-header">
+      ${dayLabel}
+      <span class="day-badge">${playedCnt}/${ms.length} 已赛</span>
+    </div>
+    ${items}
+  </div>`;
+}).join('');
+})();
+</script>
+</body>
+</html>
