@@ -26,6 +26,23 @@ def multiclass_brier(y_true, probs_list):
     )
     return total / len(y_true)
 
+def fmt_top_scores(raw: str) -> str:
+    """把 '1-0:0.182,0-0:0.143' 格式化为 '1-0: 18%  0-0: 14%'"""
+    if not raw or str(raw) in ('', 'nan'):
+        return ''
+    parts = []
+    for token in str(raw).split(','):
+        token = token.strip()
+        if ':' not in token:
+            continue
+        score, prob_s = token.rsplit(':', 1)
+        try:
+            prob_pct = round(float(prob_s) * 100)
+            parts.append(f"{score}: {prob_pct}%")
+        except ValueError:
+            parts.append(score)
+    return '  '.join(parts)
+
 def bla_predict(ph_val):
     try:
         ph = float(ph_val)
@@ -151,7 +168,8 @@ for _, r in upcoming.iterrows():
     upcoming_data.append({'date': _bj_date or str(r['match_date'])[:10],
         'home': h_cn, 'away': a_cn, 'bj_time': _bj_time,
         'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3),
-        'dc_pred': str(r['dc_pred']), 'xgb_pred': xadj, 'high_conf': conf})
+        'dc_pred': str(r['dc_pred']), 'xgb_pred': xadj, 'high_conf': conf,
+        'top_scores': fmt_top_scores(r.get('dc_top_scores', ''))})
 
 settled_data = []
 for _, r in settled.iterrows():
@@ -162,7 +180,8 @@ for _, r in settled.iterrows():
         'actual': str(r['actual_result']), 'dc_pred': str(r['dc_pred']),
         'dc_correct': int(float(r['dc_correct'])), 'xgb_correct': int(float(r['xgb_correct'])),
         'adj_correct': int(float(r['adj_correct'])), 'bla_correct': int(float(r['bla_correct'])),
-        'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3)})
+        'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3),
+        'top_scores': fmt_top_scores(r.get('dc_top_scores', ''))})
 
 
 # ─── E. 蒙特卡洛（若有） ─────────────────────────────────────────────────────
@@ -596,7 +615,7 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
         <div class="pb-h" style="width:${pct0(m.ph)}">${pct0(m.ph)}</div>
         <div class="pb-d" style="width:${pct0(m.pd)}">${pct0(m.pd)}</div>
         <div class="pb-a" style="width:${pct0(m.pa)}">${pct0(m.pa)}</div>
-      </div></td>
+      </div>${m.top_scores?`<div style="color:var(--muted);font-size:.68rem;margin-top:.18rem;white-space:nowrap">${esc(m.top_scores)}</div>`:''}</td>
       <td>${badge(m.dc_pred)}${m.high_conf?'<span class="conf-badge">高</span>':''}</td>
       <td>${badge(m.xgb_pred)}</td>
     </tr>`;
@@ -672,7 +691,7 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
       <td>${badge(r.actual)}</td>
       <td>${tick(r.dc_correct)}</td><td>${tick(r.xgb_correct)}</td>
       <td>${tick(r.adj_correct)}</td><td>${tick(r.bla_correct)}</td>
-      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span></td>
+      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span>${r.top_scores?`<br><span style="font-size:.65rem;color:var(--muted)">${esc(r.top_scores)}</span>`:''}</td>
     </tr>`; }).join('');
 })();
 

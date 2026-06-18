@@ -79,6 +79,56 @@ def add_interaction_features(df):
     return d
 
 
+def dc_top_scores_for_matches(dc_model, df_matches, max_goals=10, top_k=2):
+    """返回每场DC最可能的 top_k 比分，格式: ["1-0:0.182,0-0:0.143", ...]"""
+    from scipy.special import gammaln
+    try:
+        from live_features import norm_team
+    except ImportError:
+        def norm_team(x): return x
+
+    ht  = np.array([norm_team(t) for t in df_matches["home_team"].values])
+    at  = np.array([norm_team(t) for t in df_matches["away_team"].values])
+    neu = df_matches["neutral"].fillna(0).values.astype(float)
+    n   = len(ht)
+
+    avg_la = dc_model.avg_log_a; avg_ld = dc_model.avg_log_d
+    la_h = np.array([dc_model.log_a.get(t, avg_la) for t in ht])
+    ld_h = np.array([dc_model.log_d.get(t, avg_ld) for t in ht])
+    la_a = np.array([dc_model.log_a.get(t, avg_la) for t in at])
+    ld_a = np.array([dc_model.log_d.get(t, avg_ld) for t in at])
+
+    gamma = np.exp(dc_model.log_gamma); rho = dc_model.rho
+    lam   = np.exp(la_h + ld_a) * np.where(neu == 0, gamma, 1.0)
+    mu    = np.exp(la_a + ld_h)
+
+    goals = np.arange(max_goals + 1, dtype=float)
+    lgf   = gammaln(goals + 1)
+    p_hg  = np.exp(goals[None,:] * np.log(np.maximum(lam[:,None], 1e-10)) - lam[:,None] - lgf[None,:])
+    p_ag  = np.exp(goals[None,:] * np.log(np.maximum(mu[:,None],  1e-10)) - mu[:,None]  - lgf[None,:])
+
+    joint = p_hg[:,:,None] * p_ag[:,None,:]
+    joint[:,0,0] *= np.maximum(1 - lam * mu * rho, 0)
+    joint[:,1,0] *= np.maximum(1 + mu * rho, 0)
+    joint[:,0,1] *= np.maximum(1 + lam * rho, 0)
+    joint[:,1,1] *= np.maximum(1 - rho, 0)
+    joint  = np.maximum(joint, 0)
+    joint /= joint.sum(axis=(1,2), keepdims=True).clip(min=1e-10)
+
+    mg1 = max_goals + 1
+    results = []
+    for i in range(n):
+        flat    = joint[i].ravel()
+        top_idx = np.argpartition(flat, -top_k)[-top_k:]
+        top_idx = top_idx[np.argsort(flat[top_idx])[::-1]]
+        parts   = []
+        for idx in top_idx:
+            hg = int(idx // mg1); ag = int(idx % mg1)
+            parts.append(f"{hg}-{ag}:{flat[idx]:.3f}")
+        results.append(",".join(parts))
+    return results
+
+
 def dc_probs_for_matches(dc_model, df_matches, max_goals=10):
     """向量化批量 DC 预测，返回 (N,3) [A,D,H]"""
     from scipy.special import gammaln
