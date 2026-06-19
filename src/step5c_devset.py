@@ -129,6 +129,47 @@ def dc_top_scores_for_matches(dc_model, df_matches, max_goals=10, top_k=2):
     return results
 
 
+def dc_side_markets_for_matches(dc_model, df_matches, max_goals=10):
+    """向量化批量计算大小球(Over2.5)和双方进球(BTTS)概率，返回 (ou25, btts) 各 shape (N,)"""
+    from scipy.special import gammaln
+    try:
+        from live_features import norm_team
+    except ImportError:
+        def norm_team(x): return x
+
+    ht  = np.array([norm_team(t) for t in df_matches["home_team"].values])
+    at  = np.array([norm_team(t) for t in df_matches["away_team"].values])
+    neu = df_matches["neutral"].fillna(0).values.astype(float)
+
+    avg_la = dc_model.avg_log_a; avg_ld = dc_model.avg_log_d
+    la_h = np.array([dc_model.log_a.get(t, avg_la) for t in ht])
+    ld_h = np.array([dc_model.log_d.get(t, avg_ld) for t in ht])
+    la_a = np.array([dc_model.log_a.get(t, avg_la) for t in at])
+    ld_a = np.array([dc_model.log_d.get(t, avg_ld) for t in at])
+
+    gamma = np.exp(dc_model.log_gamma); rho = dc_model.rho
+    lam   = np.exp(la_h + ld_a) * np.where(neu == 0, gamma, 1.0)
+    mu    = np.exp(la_a + ld_h)
+
+    goals = np.arange(max_goals + 1, dtype=float)
+    lgf   = gammaln(goals + 1)
+    p_hg  = np.exp(goals[None,:] * np.log(np.maximum(lam[:,None], 1e-10)) - lam[:,None] - lgf[None,:])
+    p_ag  = np.exp(goals[None,:] * np.log(np.maximum(mu[:,None],  1e-10)) - mu[:,None]  - lgf[None,:])
+
+    joint = p_hg[:,:,None] * p_ag[:,None,:]
+    joint[:,0,0] *= np.maximum(1 - lam * mu * rho, 0)
+    joint[:,1,0] *= np.maximum(1 + mu * rho, 0)
+    joint[:,0,1] *= np.maximum(1 + lam * rho, 0)
+    joint[:,1,1] *= np.maximum(1 - rho, 0)
+    joint  = np.maximum(joint, 0)
+    joint /= joint.sum(axis=(1,2), keepdims=True).clip(min=1e-10)
+
+    hg_idx, ag_idx = np.mgrid[0:max_goals+1, 0:max_goals+1]
+    ou25 = (joint * ((hg_idx + ag_idx) >= 3)[None]).sum(axis=(1,2))
+    btts = (joint * ((hg_idx >= 1) & (ag_idx >= 1))[None]).sum(axis=(1,2))
+    return ou25, btts
+
+
 def dc_probs_for_matches(dc_model, df_matches, max_goals=10):
     """向量化批量 DC 预测，返回 (N,3) [A,D,H]"""
     from scipy.special import gammaln

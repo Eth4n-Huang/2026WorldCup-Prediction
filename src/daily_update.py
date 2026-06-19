@@ -24,7 +24,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 
 from step4_train      import predict_with_draw_adj
-from step5c_devset    import dc_probs_for_matches, dc_top_scores_for_matches
+from step5c_devset    import dc_probs_for_matches, dc_top_scores_for_matches, dc_side_markets_for_matches
 from metrics          import LABEL_ORDER, multiclass_brier
 from live_features    import (
     FEAT_COLS_INTER, build_feature_matrix,
@@ -58,7 +58,7 @@ PRED_COLS = [
     "bla_ph", "high_conf",
     "actual_result", "dc_correct", "xgb_correct", "adj_correct",
     "manual_adj_applied", "is_current",
-    "dc_top_scores",
+    "dc_top_scores", "dc_ou25", "dc_btts",
 ]
 
 
@@ -250,6 +250,7 @@ def generate_day_predictions(
     # 预测
     dc_probs      = dc_probs_for_matches(dc, upcoming)
     dc_top_scores = dc_top_scores_for_matches(dc, upcoming)
+    dc_ou25_arr, dc_btts_arr = dc_side_markets_for_matches(dc, upcoming)
     xgb_probs = xgb_pkg["calibrated_model"].predict_proba(X)
     xgb_delta = xgb_pkg["delta"]
     xgb_thr   = xgb_pkg["draw_thr"]
@@ -306,6 +307,8 @@ def generate_day_predictions(
             "manual_adj_applied": adj_note_global if affected else "",
             "is_current":         1,
             "dc_top_scores":      dc_top_scores[i],
+            "dc_ou25":            round(float(dc_ou25_arr[i]), 4),
+            "dc_btts":            round(float(dc_btts_arr[i]), 4),
         })
     return pd.DataFrame(rows, columns=PRED_COLS)
 

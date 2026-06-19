@@ -159,6 +159,29 @@ for i in range(len(settled)):
 
 
 # ─── D. 待赛/已赛数据 ────────────────────────────────────────────────────────
+def _safe_market(val):
+    try:
+        v = float(val)
+        return None if (v != v) else round(v, 3)
+    except (TypeError, ValueError):
+        return None
+
+_lr_path = ROOT / 'data/processed/wc2026_results.csv'
+_scores_lookup = {}
+if _lr_path.exists():
+    _lr = pd.read_csv(_lr_path, encoding='utf-8')
+    _lr_played = _lr[_lr['home_score'].notna()].copy()
+    for _, _r in _lr_played.iterrows():
+        _k = f"{_r['home_team']}|{_r['away_team']}"
+        try:
+            _hs = int(_r['home_score']); _as = int(_r['away_score'])
+            _scores_lookup[_k] = {
+                'actual_ou25': int((_hs + _as) >= 3),
+                'actual_btts': int(_hs >= 1 and _as >= 1),
+            }
+        except (TypeError, ValueError):
+            pass
+
 upcoming_data = []
 for _, r in upcoming.iterrows():
     conf = str(r.get('high_conf','')).strip() in ('True','1','1.0')
@@ -169,19 +192,31 @@ for _, r in upcoming.iterrows():
         'home': h_cn, 'away': a_cn, 'bj_time': _bj_time,
         'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3),
         'dc_pred': str(r['dc_pred']), 'xgb_pred': xadj, 'high_conf': conf,
-        'top_scores': fmt_top_scores(r.get('dc_top_scores', ''))})
+        'top_scores': fmt_top_scores(r.get('dc_top_scores', '')),
+        'ou25': _safe_market(r.get('dc_ou25', '')),
+        'btts': _safe_market(r.get('dc_btts', ''))})
 
 settled_data = []
 for _, r in settled.iterrows():
     sh_cn = to_cn(r['home_team']); sa_cn = to_cn(r['away_team'])
     _sbj_date, _sbj_time = match_bj(sh_cn, sa_cn)
+    _ou25_pred = _safe_market(r.get('dc_ou25', ''))
+    _btts_pred = _safe_market(r.get('dc_btts', ''))
+    _sk = f"{r['home_team']}|{r['away_team']}"
+    _actual_scores = _scores_lookup.get(_sk)
+    _ou25_ok = None; _btts_ok = None
+    if _ou25_pred is not None and _actual_scores is not None:
+        _ou25_ok = int((_ou25_pred >= 0.5) == (_actual_scores['actual_ou25'] == 1))
+        _btts_ok = int((_btts_pred >= 0.5) == (_actual_scores['actual_btts'] == 1))
     settled_data.append({'date': _sbj_date or str(r['match_date'])[:10],
         'home': sh_cn, 'away': sa_cn, 'bj_time': _sbj_time,
         'actual': str(r['actual_result']), 'dc_pred': str(r['dc_pred']),
         'dc_correct': int(float(r['dc_correct'])), 'xgb_correct': int(float(r['xgb_correct'])),
         'adj_correct': int(float(r['adj_correct'])), 'bla_correct': int(float(r['bla_correct'])),
         'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3),
-        'top_scores': fmt_top_scores(r.get('dc_top_scores', ''))})
+        'top_scores': fmt_top_scores(r.get('dc_top_scores', '')),
+        'ou25_pred': _ou25_pred, 'btts_pred': _btts_pred,
+        'ou25_ok': _ou25_ok, 'btts_ok': _btts_ok})
 
 
 # ─── E. 蒙特卡洛（若有） ─────────────────────────────────────────────────────
@@ -615,7 +650,8 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
         <div class="pb-h" style="width:${pct0(m.ph)}">${pct0(m.ph)}</div>
         <div class="pb-d" style="width:${pct0(m.pd)}">${pct0(m.pd)}</div>
         <div class="pb-a" style="width:${pct0(m.pa)}">${pct0(m.pa)}</div>
-      </div>${m.top_scores?`<div style="color:var(--muted);font-size:.68rem;margin-top:.18rem;white-space:nowrap">${esc(m.top_scores)}</div>`:''}</td>
+      </div>${m.top_scores?`<div style="color:var(--muted);font-size:.68rem;margin-top:.18rem;white-space:nowrap">${esc(m.top_scores)}</div>`:''
+      }${(m.ou25!=null)?`<div style="color:var(--muted);font-size:.67rem;margin-top:.1rem">进球O2.5: <b>${pct0(m.ou25)}</b>  双方进球: <b>${pct0(m.btts)}</b></div>`:''}</td>
       <td>${badge(m.dc_pred)}${m.high_conf?'<span class="conf-badge">高</span>':''}</td>
       <td>${badge(m.xgb_pred)}</td>
     </tr>`;
@@ -691,7 +727,8 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
       <td>${badge(r.actual)}</td>
       <td>${tick(r.dc_correct)}</td><td>${tick(r.xgb_correct)}</td>
       <td>${tick(r.adj_correct)}</td><td>${tick(r.bla_correct)}</td>
-      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span>${r.top_scores?`<br><span style="font-size:.65rem;color:var(--muted)">${esc(r.top_scores)}</span>`:''}</td>
+      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span>${r.top_scores?`<br><span style="font-size:.65rem;color:var(--muted)">${esc(r.top_scores)}</span>`:''
+      }${(r.ou25_ok!=null)?`<br><span style="font-size:.6rem;color:var(--muted)">O2.5${r.ou25_ok?'<span class="ok">✓</span>':'<span class="ng">✗</span>'} BTTS${r.btts_ok?'<span class="ok">✓</span>':'<span class="ng">✗</span>'}</span>`:''}</td>
     </tr>`; }).join('');
 })();
 
