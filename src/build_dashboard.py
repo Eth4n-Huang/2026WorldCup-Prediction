@@ -149,7 +149,6 @@ for i in range(len(settled)):
         'n': i+1, 'label': f'#{i+1}',
         'dc_acc':  round(float(sub['dc_correct'].astype(float).mean()), 4),
         'xgb_acc': round(float(sub['xgb_correct'].astype(float).mean()), 4),
-        'adj_acc': round(float(sub['adj_correct'].astype(float).mean()), 4),
         'bla_acc': round(float(sub['bla_correct'].mean()), 4),
         'dc_brier': round(multiclass_brier(y, prbs), 4),
         'dc_correct_this': int(float(row['dc_correct'])),
@@ -185,13 +184,12 @@ if _lr_path.exists():
 upcoming_data = []
 for _, r in upcoming.iterrows():
     conf = str(r.get('high_conf','')).strip() in ('True','1','1.0')
-    xadj = str(r.get('xgb_adj', r['xgb_pred'])) if pd.notna(r.get('xgb_adj')) else str(r['xgb_pred'])
     h_cn = to_cn(r['home_team']); a_cn = to_cn(r['away_team'])
     _bj_date, _bj_time = match_bj(h_cn, a_cn)
     upcoming_data.append({'date': _bj_date or str(r['match_date'])[:10],
         'home': h_cn, 'away': a_cn, 'bj_time': _bj_time,
         'ph': round(float(r['dc_ph']),3), 'pd': round(float(r['dc_pd']),3), 'pa': round(float(r['dc_pa']),3),
-        'dc_pred': str(r['dc_pred']), 'xgb_pred': xadj, 'high_conf': conf,
+        'dc_pred': str(r['dc_pred']), 'xgb_pred': str(r['xgb_pred']), 'high_conf': conf,
         'top_scores': fmt_top_scores(r.get('dc_top_scores', '')),
         'ou25': _safe_market(r.get('dc_ou25', '')),
         'btts': _safe_market(r.get('dc_btts', ''))})
@@ -233,15 +231,19 @@ for mc_name in ['mc_champion_probs.csv', 'monte_carlo_champion.csv']:
 # ─── F. 汇总指标 ─────────────────────────────────────────────────────────────
 n_s = len(settled)
 def smean(col): return round(float(settled[col].astype(float).mean()), 4) if n_s else 0.0
+_hc = settled[settled['high_conf'].astype(str).isin(['True','1','1.0'])] if n_s else settled.iloc[:0]
+hc_total   = len(_hc)
+hc_correct = int(_hc['dc_correct'].astype(float).sum()) if hc_total > 0 else 0
 summary = {
     'n_settled': n_s, 'n_upcoming': len(upcoming),
     'dc_acc': smean('dc_correct'), 'xgb_acc': smean('xgb_correct'),
-    'adj_acc': smean('adj_correct'), 'bla_acc': smean('bla_correct'),
+    'bla_acc': smean('bla_correct'),
     'dc_brier': round(multiclass_brier(
         settled['actual_result'].values.tolist(),
         settled[['dc_pa','dc_pd','dc_ph']].values.astype(float).tolist()
     ), 4) if n_s else 0.0,
     'draw_rate': round(float((settled['actual_result']=='D').mean()),4) if n_s else 0.0,
+    'hc_total': hc_total, 'hc_correct': hc_correct,
     'gen_time': datetime.now().strftime('%Y-%m-%d'),
 }
 
@@ -313,6 +315,13 @@ for _, r in current.iterrows():
     k = f"{r['home_team']}|{r['away_team']}"
     actual_s = str(r['actual_result'])
     is_sett  = actual_s in ('H','D','A')
+    _ou25_p  = _safe_market(r.get('dc_ou25', ''))
+    _btts_p  = _safe_market(r.get('dc_btts', ''))
+    _actual_sc = _scores_lookup.get(k)
+    _ou25_ok = None; _btts_ok = None
+    if is_sett and _ou25_p is not None and _actual_sc is not None:
+        _ou25_ok = int((_ou25_p >= 0.5) == (_actual_sc['actual_ou25'] == 1))
+        _btts_ok = int((_btts_p >= 0.5) == (_actual_sc['actual_btts'] == 1))
     pred_by_teams[k] = {
         'pred': str(r['dc_pred']),
         'actual': actual_s if is_sett else None,
@@ -320,6 +329,9 @@ for _, r in current.iterrows():
         'ph': round(float(r['dc_ph']),3),
         'pd': round(float(r['dc_pd']),3),
         'pa': round(float(r['dc_pa']),3),
+        'ou25': _ou25_p, 'btts': _btts_p,
+        'ou25_ok': _ou25_ok, 'btts_ok': _btts_ok,
+        'top_scores': fmt_top_scores(r.get('dc_top_scores', '')),
     }
 
 
@@ -556,7 +568,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans
     <div id="perf-body"></div>
     <div class="settled-scroll" style="margin-top:.75rem">
       <table class="stbl"><thead><tr>
-        <th>日期</th><th>对阵</th><th>结果</th><th>DC</th><th>XGB</th><th>Adj</th><th>BLa</th><th>DC概率</th>
+        <th>日期</th><th>对阵</th><th>结果</th><th>DC</th><th>XGB</th><th>BLa</th><th>DC概率</th>
       </tr></thead><tbody id="settled-tbody"></tbody></table>
     </div>
   </div>
@@ -620,10 +632,17 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
 // ── 顶栏摘要 ─────────────────────────────────────────────────────────────────
 (function(){
   const s = DATA.summary;
+  const hcV = s.hc_total >= 5
+    ? s.hc_correct+'/'+s.hc_total+' ('+pct(s.hc_correct/s.hc_total)+')'
+    : 'n='+s.hc_total+'(样本不足)';
+  const hcC = s.hc_total >= 5
+    ? (s.hc_correct/s.hc_total >= s.dc_acc ? 'good' : 'warn')
+    : 'muted';
   document.getElementById('pills').innerHTML = [
     {l:'已结算', v:s.n_settled+' 场', c:'info'},
     {l:'DC准确率', v:pct(s.dc_acc), c: s.dc_acc>=DATA.bt_acc?'good':'warn'},
     {l:'Brier',    v:s.dc_brier.toFixed(3), c: s.dc_brier<=DATA.bt_brier?'good':'warn'},
+    {l:'金框命中', v:hcV, c:hcC},
     {l:'平局率',   v:pct(s.draw_rate), c:'warn'},
     {l:'待赛',     v:s.n_upcoming+' 场', c:'muted'},
   ].map(p=>`<div class="pill ${p.c}"><span>${p.v}</span> ${p.l}</div>`).join('');
@@ -673,7 +692,7 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
   new Chart(document.getElementById('chartAcc'),{type:'line',data:{labels,datasets:[
     {label:'DC',data:r.map(d=>+(d.dc_acc*100).toFixed(1)),borderColor:'#38bdf8',
      pointBackgroundColor:ptColors,pointBorderColor:ptColors,tension:.3,fill:false},
-    {label:'Adj',data:r.map(d=>+(d.adj_acc*100).toFixed(1)),borderColor:'#c084fc',
+    {label:'XGB',data:r.map(d=>+(d.xgb_acc*100).toFixed(1)),borderColor:'#818cf8',
      pointStyle:'triangle',pointRadius:4,tension:.3,fill:false},
     {label:'BLa',data:r.map(d=>+(d.bla_acc*100).toFixed(1)),borderColor:'#fb923c',pointRadius:0,tension:.3,fill:false},
     {label:'基准',data:r.map(_=>+(DATA.bt_acc*100).toFixed(1)),borderColor:'#4ade8066',
@@ -690,7 +709,7 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
     title:{display:true,text:'Brier (↓越小越好)',color:'#64748b',font:{size:10}},
     grid:{color:'#1a2a3a'},ticks:{color:'#64748b',font:{size:10}}}}}});
   document.getElementById('chart-legend').innerHTML=[
-    {c:'#38bdf8',l:'DC（绿点=命中/红点=失误）'},{c:'#c084fc',l:'XGB+调整'},
+    {c:'#38bdf8',l:'DC（绿点=命中/红点=失误）'},{c:'#818cf8',l:'XGB (argmax)'},
     {c:'#fb923c',l:'BLa基线'},{c:'#4ade8066',l:'回测基准',dash:true}
   ].map(({c,l,dash})=>`<div class="legend-item">${dash
     ?`<div class="legend-dash" style="border-color:${c}"></div>`
@@ -707,8 +726,7 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
   if(!n){document.getElementById('perf-body').innerHTML='<div class="empty">暂无数据</div>';return;}
   const models=[
     {name:'DC Dixon-Coles',acc:s.dc_acc,brier:s.dc_brier,c:'#38bdf8'},
-    {name:'XGB+平局调整', acc:s.adj_acc,brier:null,c:'#c084fc'},
-    {name:'XGB原始',      acc:s.xgb_acc,brier:null,c:'#818cf8'},
+    {name:'XGB (argmax)', acc:s.xgb_acc,brier:null,c:'#818cf8'},
     {name:'BLa Elo基线',  acc:s.bla_acc,brier:null,c:'#fb923c'},
   ];
   const maxA=Math.max(...models.map(m=>m.acc));
@@ -726,9 +744,8 @@ document.querySelectorAll('.tabbtn').forEach(btn => {
       <td><span style="font-size:.76rem">${esc(r.home)}<span style="color:var(--muted)"> vs </span>${esc(r.away)}</span></td>
       <td>${badge(r.actual)}</td>
       <td>${tick(r.dc_correct)}</td><td>${tick(r.xgb_correct)}</td>
-      <td>${tick(r.adj_correct)}</td><td>${tick(r.bla_correct)}</td>
-      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span>${r.top_scores?`<br><span style="font-size:.65rem;color:var(--muted)">${esc(r.top_scores)}</span>`:''
-      }${(r.ou25_ok!=null)?`<br><span style="font-size:.6rem;color:var(--muted)">O2.5${r.ou25_ok?'<span class="ok">✓</span>':'<span class="ng">✗</span>'} BTTS${r.btts_ok?'<span class="ok">✓</span>':'<span class="ng">✗</span>'}</span>`:''}</td>
+      <td>${tick(r.bla_correct)}</td>
+      <td><span style="font-size:.7rem;color:var(--dim)">${pct0(r.ph)}/${pct0(r.pd)}/${pct0(r.pa)}</span></td>
     </tr>`; }).join('');
 })();
 
@@ -996,7 +1013,14 @@ body.innerHTML = Object.keys(byDate).sort().map(date => {
     let predHtml='';
     if(pred){
       if(isPlayed && pred.dc_ok!==null){
-        predHtml=`<div class="sched-pred-row"><span class="sched-pred-lbl">DC</span>${badge(pred.pred)}${pred.dc_ok?'<span class="ok"> ✓</span>':'<span class="ng"> ✗</span>'}</div>`;
+        const topScHtml=pred.top_scores?`<div style="font-size:.65rem;color:var(--muted);margin-top:.1rem;text-align:right">${esc(pred.top_scores)}</div>`:'';
+        let mktsHtml='';
+        if(pred.ou25!=null){
+          const ouTick =pred.ou25_ok===1?'<span class="ok">✓</span>':'<span class="ng">✗</span>';
+          const bttsTick=pred.btts_ok===1?'<span class="ok">✓</span>':'<span class="ng">✗</span>';
+          mktsHtml=`<div style="font-size:.66rem;color:var(--dim);margin-top:.1rem;text-align:right">O2.5 <b>${pct0(pred.ou25)}</b> ${ouTick}&ensp;BTTS <b>${pct0(pred.btts)}</b> ${bttsTick}</div>`;
+        }
+        predHtml=`<div class="sched-pred-row"><span class="sched-pred-lbl">DC</span>${badge(pred.pred)}${pred.dc_ok?'<span class="ok"> ✓</span>':'<span class="ng"> ✗</span>'}</div>${topScHtml}${mktsHtml}`;
       } else if(!isPlayed){
         predHtml=`<div class="sched-pred-row"><span class="sched-pred-lbl">DC</span>${badge(pred.pred)}</div>`;
       }

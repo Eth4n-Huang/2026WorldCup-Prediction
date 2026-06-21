@@ -469,7 +469,6 @@ def print_rolling_stats(df_preds: pd.DataFrame):
     dc_acc   = float((settled["dc_correct"].astype(int) == 1).mean())
     dc_brier = multiclass_brier(y, dc_probs_arr)
     xgb_acc  = float((settled["xgb_correct"].astype(int) == 1).mean())
-    adj_acc  = float((settled["adj_correct"].astype(int) == 1).mean())
 
     da = dc_acc   - BACKTEST_ACC_DC
     db = dc_brier - BACKTEST_BRIER_DC
@@ -486,7 +485,7 @@ def print_rolling_stats(df_preds: pd.DataFrame):
         status = "正常✓" if abs(da) < 0.05 else ("偏高↑" if da > 0 else "偏低↓")
         print(f"  │  DC  : ACC={dc_acc:.4f}  Brier={dc_brier:.4f}  "
               f"Δ_ACC={da:+.4f}  Δ_Brier={db:+.4f}  {status}")
-    print(f"  │  XGB : ACC={xgb_acc:.4f}  adj_ACC={adj_acc:.4f}")
+    print(f"  │  XGB : ACC={xgb_acc:.4f}")
     print(f"  │  回测基准: ACC≈{BACKTEST_ACC_DC:.4f}  Brier≈{BACKTEST_BRIER_DC:.4f}")
     print(f"  └──────────────────────────────────────────────────────────────┘")
 
